@@ -23,12 +23,12 @@ const (
 
 type runtime struct {
 	c    atomic.Pointer[policy.Compiled]
-	val  [8]atomic.Int64
+	val  []atomic.Int64
 	agg  [2]*limit.Bandwidth
-	rate [2]*limit.RateLimiter
-	conc [2]*limit.Concurrency
+	rate []*limit.RateLimiter // indexed by limit slot; nil for non-rate limits
+	conc []*limit.Concurrency // indexed by limit slot; nil for non-concurrency limits
 
-	requests, rejRate, rejConc, bytesIn, bytesOut *metrics.Counter
+	requests, bytesIn, bytesOut *metrics.Counter
 }
 
 type Engine struct {
@@ -112,29 +112,29 @@ func (e *Engine) share() float64 {
 }
 
 func (e *Engine) newRuntime(name string) *runtime {
-	rt := &runtime{}
-	idx := policy.LimitIndex
+	rt := &runtime{val: make([]atomic.Int64, len(policy.LimitTypes)),
+		rate: make([]*limit.RateLimiter, len(policy.LimitTypes)),
+		conc: make([]*limit.Concurrency, len(policy.LimitTypes))}
 	bw := func(slot int) *limit.Bandwidth {
 		return &limit.Bandwidth{Rate: func() float64 { return float64(rt.val[slot].Load()) / e.share() }}
 	}
-	rt.agg[0], rt.agg[1] = bw(idx(policy.AggIn)), bw(idx(policy.AggOut))
-	for i, t := range []string{policy.ReadRate, policy.WriteRate} {
-		slot := idx(t)
-		rt.rate[i] = &limit.RateLimiter{Rate: func() float64 { return float64(rt.val[slot].Load()) / e.share() }}
-	}
-	for i, t := range []string{policy.ConcRead, policy.ConcWrite} {
-		slot := idx(t)
-		rt.conc[i] = &limit.Concurrency{Max: func() int64 {
-			v := rt.val[slot].Load()
-			if v <= 0 {
-				return 0
-			}
-			return int64(math.Max(1, math.Ceil(float64(v)/e.share())))
-		}}
+	rt.agg[0], rt.agg[1] = bw(policy.LimitIndex(policy.AggIn)), bw(policy.LimitIndex(policy.AggOut))
+	for slot, t := range policy.LimitTypes {
+		slot := slot
+		switch {
+		case policy.IsRateLimit(t):
+			rt.rate[slot] = &limit.RateLimiter{Rate: func() float64 { return float64(rt.val[slot].Load()) / e.share() }}
+		case policy.IsConcLimit(t):
+			rt.conc[slot] = &limit.Concurrency{Max: func() int64 {
+				v := rt.val[slot].Load()
+				if v <= 0 {
+					return 0
+				}
+				return int64(math.Max(1, math.Ceil(float64(v)/e.share())))
+			}}
+		}
 	}
 	rt.requests = e.reg.Counter("s3qos_policy_requests_total", "policy", name)
-	rt.rejRate = e.reg.Counter("s3qos_policy_throttled_total", "policy", name, "reason", "rate")
-	rt.rejConc = e.reg.Counter("s3qos_policy_throttled_total", "policy", name, "reason", "concurrency")
 	rt.bytesIn = e.reg.Counter("s3qos_policy_bytes_total", "policy", name, "direction", "in")
 	rt.bytesOut = e.reg.Counter("s3qos_policy_bytes_total", "policy", name, "direction", "out")
 	return rt
@@ -145,6 +145,7 @@ type Decision struct {
 	Rejected  bool
 	Reason    string // "rate" or "concurrency"
 	Policy    string // policy that rejected
+	Limit     string // limit type that rejected, e.g. "listRequestRate"
 	Matched   []string
 	In, Out   *limit.Bandwidth // nil = unshaped
 	BWPolicy  string           // policy selecting the bandwidth limits
@@ -175,8 +176,10 @@ func (d *Decision) AddOut(n int) {
 }
 
 // Admit classifies against all policies and enforces rate and concurrency
-// (any matching policy may reject) and selects bandwidth shapers.
-func (e *Engine) Admit(a policy.Attrs, read bool) *Decision {
+// (any matching policy may reject) and selects bandwidth shapers. A request is
+// checked against its group limit (read/write) and, if set, its operation
+// limit (get, list, put, delete, ...); every one of them must allow it.
+func (e *Engine) Admit(a policy.Attrs, op policy.Operation) *Decision {
 	e.mu.RLock()
 	list, mode := e.list, e.mode
 	e.mu.RUnlock()
@@ -197,34 +200,50 @@ func (e *Engine) Admit(a policy.Attrs, read bool) *Decision {
 			rt.requests.Add(1)
 		}
 	}
-	dir := 1
-	if read {
-		dir = 0
+	reject := func(rt *runtime, reason, lim string) *Decision {
+		name := rt.c.Load().Name
+		d.Rejected, d.Reason, d.Policy, d.Limit = true, reason, name, lim
+		e.reg.Counter("s3qos_policy_throttled_total", "policy", name, "reason", reason, "limit", lim).Add(1)
+		return d
 	}
-	// Request rate: every matching policy must allow.
+	// Request rate: every matching policy must allow. Tokens already taken are
+	// refunded if a later limit rejects, since the request never starts.
+	var taken []*limit.RateLimiter
 	for _, m := range ms {
-		if m.rt.val[policy.LimitIndex([]string{policy.ReadRate, policy.WriteRate}[dir])].Load() > 0 && !m.rt.rate[dir].Allow() {
-			m.rt.rejRate.Add(1)
-			d.Rejected, d.Reason, d.Policy = true, "rate", m.c.Name
-			return d
+		for _, t := range policy.RateLimits(op) {
+			slot := policy.LimitIndex(t)
+			if m.rt.val[slot].Load() <= 0 {
+				continue
+			}
+			if !m.rt.rate[slot].Allow() {
+				for _, rl := range taken {
+					rl.Refund()
+				}
+				return reject(m.rt, "rate", t)
+			}
+			taken = append(taken, m.rt.rate[slot])
 		}
 	}
 	// Concurrency: acquire from every matching policy, roll back on failure.
 	for _, m := range ms {
-		if m.rt.val[policy.LimitIndex([]string{policy.ConcRead, policy.ConcWrite}[dir])].Load() <= 0 {
-			continue
-		}
-		cg := m.rt.conc[dir]
-		if !cg.TryAcquire() {
-			m.rt.rejConc.Add(1)
-			for _, f := range d.releases {
-				f()
+		for _, t := range policy.ConcLimits(op) {
+			slot := policy.LimitIndex(t)
+			if m.rt.val[slot].Load() <= 0 {
+				continue
 			}
-			d.releases = nil
-			d.Rejected, d.Reason, d.Policy = true, "concurrency", m.c.Name
-			return d
+			cg := m.rt.conc[slot]
+			if !cg.TryAcquire() {
+				for _, f := range d.releases {
+					f()
+				}
+				d.releases = nil
+				for _, rl := range taken {
+					rl.Refund()
+				}
+				return reject(m.rt, "concurrency", t)
+			}
+			d.releases = append(d.releases, cg.Release)
 		}
-		d.releases = append(d.releases, cg.Release)
 	}
 	// Bandwidth: single best-match policy among those with a bandwidth limit.
 	var best *match
@@ -271,9 +290,13 @@ func (e *Engine) collect(w io.Writer) {
 	e.mu.RUnlock()
 	sort.Slice(list, func(i, j int) bool { return list[i].c.Load().Name < list[j].c.Load().Name })
 	for _, rt := range list {
-		n := rt.c.Load().Name
-		fmt.Fprintf(w, "%s %d\n", metrics.Label("s3qos_policy_active_requests", "policy", n, "class", "read"), rt.conc[0].Active())
-		fmt.Fprintf(w, "%s %d\n", metrics.Label("s3qos_policy_active_requests", "policy", n, "class", "write"), rt.conc[1].Active())
+		for slot, t := range policy.LimitTypes {
+			cg := rt.conc[slot]
+			if cg == nil || (rt.val[slot].Load() <= 0 && cg.Active() == 0) {
+				continue
+			}
+			fmt.Fprintf(w, "%s %d\n", metrics.Label("s3qos_policy_active_requests", "policy", rt.c.Load().Name, "limit", t), cg.Active())
+		}
 	}
 	fmt.Fprintf(w, "s3qos_fleet_share_divisor %g\n", e.share())
 }

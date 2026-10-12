@@ -148,13 +148,13 @@ func (e *Endpoint) pick() *Backend {
 
 func (e *Endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	begin := time.Now()
-	read := classify.IsRead(r.Method)
+	op := e.cls.Operation(r)
 	class := "write"
-	if read {
+	if op.IsRead() {
 		class = "read"
 	}
 	attrs := e.cls.Classify(r, e.cfg.Name)
-	d := e.eng.Admit(attrs, read)
+	d := e.eng.Admit(attrs, op)
 	defer d.Done()
 
 	rec := &statusWriter{ResponseWriter: w, code: 200}
@@ -163,7 +163,7 @@ func (e *Endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if d.Rejected {
 			code = "503"
 		}
-		e.reg.Counter("s3qos_requests_total", "endpoint", e.cfg.Name, "type", e.cfg.Type, "class", class, "code", code).Add(1)
+		e.reg.Counter("s3qos_requests_total", "endpoint", e.cfg.Name, "type", e.cfg.Type, "class", class, "op", string(op), "code", code).Add(1)
 		e.reg.Counter("s3qos_request_seconds_sum_micro", "endpoint", e.cfg.Name, "class", class).Add(uint64(time.Since(begin).Microseconds()))
 	}()
 

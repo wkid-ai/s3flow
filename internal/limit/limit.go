@@ -102,6 +102,18 @@ func (r *RateLimiter) Allow() bool {
 	return false
 }
 
+// Refund returns a token taken by a successful Allow, used when the request is
+// later rejected by another limit and therefore never actually starts.
+func (r *RateLimiter) Refund() {
+	rate := r.Rate()
+	if rate <= 0 {
+		return
+	}
+	r.mu.Lock()
+	r.tokens = math.Min(math.Max(1, rate), r.tokens+1)
+	r.mu.Unlock()
+}
+
 // Concurrency caps simultaneously active requests.
 type Concurrency struct {
 	Max func() int64 // <=0 means unlimited

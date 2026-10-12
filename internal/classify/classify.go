@@ -59,6 +59,12 @@ func AccessKey(r *http.Request) string {
 
 // Bucket extracts the bucket from the Host (virtual-hosted) or the path.
 func (c *Classifier) Bucket(r *http.Request) string {
+	b, _ := c.bucketKey(r)
+	return b
+}
+
+// bucketKey returns the bucket and whether the request addresses an object key.
+func (c *Classifier) bucketKey(r *http.Request) (bucket string, hasKey bool) {
 	host := r.Host
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
@@ -67,20 +73,21 @@ func (c *Classifier) Bucket(r *http.Request) string {
 	for _, d := range c.BaseDomains {
 		d = strings.ToLower(d)
 		if host != d && strings.HasSuffix(host, "."+d) {
-			return strings.TrimSuffix(host, "."+d)
+			return strings.TrimSuffix(host, "."+d), strings.Trim(r.URL.EscapedPath(), "/") != ""
 		}
 	}
 	p := strings.TrimPrefix(r.URL.EscapedPath(), "/")
 	if p == "" {
-		return ""
+		return "", false
 	}
+	rest := ""
 	if i := strings.IndexByte(p, '/'); i >= 0 {
-		p = p[:i]
+		p, rest = p[:i], p[i+1:]
 	}
 	if u, err := url.PathUnescape(p); err == nil {
-		return u
+		p = u
 	}
-	return p
+	return p, rest != ""
 }
 
 // ClientIP returns the originating address, honouring X-Forwarded-For only
@@ -134,5 +141,64 @@ func (c *Classifier) Classify(r *http.Request, endpoint string) policy.Attrs {
 	return a
 }
 
-// IsRead reports whether the method is a read (GET/HEAD); everything else is a write.
-func IsRead(method string) bool { return method == http.MethodGet || method == http.MethodHead }
+// bucketConfigParams are bucket sub-resources: a bucket-level GET carrying one
+// of them reads configuration (get) rather than listing objects (list).
+var bucketConfigParams = []string{
+	"acl", "policy", "policyStatus", "location", "versioning", "lifecycle", "cors",
+	"tagging", "website", "logging", "notification", "replication", "encryption",
+	"object-lock", "publicAccessBlock", "accelerate", "requestPayment", "analytics",
+	"inventory", "metrics", "intelligent-tiering", "ownershipControls",
+}
+
+// Operation classifies the S3 operation of a request from its method, path,
+// query and x-amz-copy-source header, without modifying the request.
+func (c *Classifier) Operation(r *http.Request) policy.Operation {
+	bucket, hasKey := c.bucketKey(r)
+	q := r.URL.Query()
+	has := func(k string) bool { _, ok := q[k]; return ok }
+	switch r.Method {
+	case http.MethodGet:
+		switch {
+		case bucket == "":
+			return policy.OpList // ListBuckets
+		case hasKey:
+			if has("uploadId") {
+				return policy.OpList // ListParts
+			}
+			return policy.OpGet
+		default:
+			for _, k := range bucketConfigParams {
+				if has(k) {
+					return policy.OpGet
+				}
+			}
+			return policy.OpList // ListObjects(V2), versions, uploads
+		}
+	case http.MethodHead:
+		return policy.OpHead
+	case http.MethodPut:
+		if hasKey {
+			if has("uploadId") && has("partNumber") {
+				return policy.OpMultipart // UploadPart / UploadPartCopy
+			}
+			if r.Header.Get("X-Amz-Copy-Source") != "" {
+				return policy.OpCopy
+			}
+		}
+		return policy.OpPut
+	case http.MethodPost:
+		if hasKey && (has("uploads") || has("uploadId")) {
+			return policy.OpMultipart // Initiate / Complete
+		}
+		if !hasKey && has("delete") {
+			return policy.OpDelete // DeleteObjects
+		}
+		return policy.OpPut
+	case http.MethodDelete:
+		if hasKey && has("uploadId") {
+			return policy.OpMultipart // AbortMultipartUpload
+		}
+		return policy.OpDelete
+	}
+	return policy.OpOther
+}

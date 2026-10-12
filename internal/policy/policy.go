@@ -21,18 +21,98 @@ const (
 	ConcWrite = "concurrentWriteRequests"
 )
 
-// LimitTypes fixes the index used for per-policy limit storage.
-var LimitTypes = []string{AggIn, AggOut, ReqIn, ReqOut, ReadRate, WriteRate, ConcRead, ConcWrite}
+// Operation is the S3 operation class of a request. Every operation belongs to
+// either the read group (GET/HEAD/LIST) or the write group (everything else),
+// so a request is governed by its group limit AND its own operation limit.
+type Operation string
+
+const (
+	OpGet       Operation = "get"       // GetObject and object/bucket sub-resource reads
+	OpHead      Operation = "head"      // HeadObject / HeadBucket
+	OpList      Operation = "list"      // ListBuckets, ListObjects(V2), ListObjectVersions, ListMultipartUploads, ListParts
+	OpPut       Operation = "put"       // PutObject, CreateBucket, sub-resource writes, POST uploads/select
+	OpCopy      Operation = "copy"      // CopyObject (PUT with x-amz-copy-source)
+	OpMultipart Operation = "multipart" // Initiate / UploadPart / UploadPartCopy / Complete / Abort
+	OpDelete    Operation = "delete"    // DeleteObject, DeleteObjects (POST ?delete), DeleteBucket
+	OpOther     Operation = "other"     // any other method; only group limits apply
+)
+
+// IsRead reports whether the operation belongs to the read group.
+func (o Operation) IsRead() bool { return o == OpGet || o == OpHead || o == OpList }
+
+// OpSpec names the optional per-operation limits.
+type OpSpec struct {
+	Op         Operation
+	Rate, Conc string
+}
+
+// OpSpecs lists every operation that has dedicated limits.
+var OpSpecs = []OpSpec{
+	{OpGet, "getRequestRate", "concurrentGetRequests"},
+	{OpHead, "headRequestRate", "concurrentHeadRequests"},
+	{OpList, "listRequestRate", "concurrentListRequests"},
+	{OpPut, "putRequestRate", "concurrentPutRequests"},
+	{OpCopy, "copyRequestRate", "concurrentCopyRequests"},
+	{OpMultipart, "multipartRequestRate", "concurrentMultipartRequests"},
+	{OpDelete, "deleteRequestRate", "concurrentDeleteRequests"},
+}
+
+var (
+	// LimitTypes fixes the slot used for per-policy limit storage.
+	LimitTypes []string
+	limitIdx   = map[string]int{}
+	rateSet    = map[string]bool{}
+	concSet    = map[string]bool{}
+	rateByOp   = map[Operation][]string{}
+	concByOp   = map[Operation][]string{}
+)
+
+func init() {
+	LimitTypes = []string{AggIn, AggOut, ReqIn, ReqOut, ReadRate, WriteRate, ConcRead, ConcWrite}
+	rateSet[ReadRate], rateSet[WriteRate] = true, true
+	concSet[ConcRead], concSet[ConcWrite] = true, true
+	for _, s := range OpSpecs {
+		LimitTypes = append(LimitTypes, s.Rate, s.Conc)
+		rateSet[s.Rate], concSet[s.Conc] = true, true
+	}
+	for i, t := range LimitTypes {
+		limitIdx[t] = i
+	}
+	ops := []Operation{OpOther}
+	for _, s := range OpSpecs {
+		ops = append(ops, s.Op)
+	}
+	for _, op := range ops {
+		rate, conc := WriteRate, ConcWrite
+		if op.IsRead() {
+			rate, conc = ReadRate, ConcRead
+		}
+		rateByOp[op], concByOp[op] = []string{rate}, []string{conc}
+	}
+	for _, s := range OpSpecs {
+		rateByOp[s.Op] = append(rateByOp[s.Op], s.Rate)
+		concByOp[s.Op] = append(concByOp[s.Op], s.Conc)
+	}
+}
 
 // LimitIndex returns the slot of a limit type or -1.
 func LimitIndex(t string) int {
-	for i, n := range LimitTypes {
-		if n == t {
-			return i
-		}
+	if i, ok := limitIdx[t]; ok {
+		return i
 	}
 	return -1
 }
+
+// IsRateLimit / IsConcLimit report the kind of a limit type.
+func IsRateLimit(t string) bool { return rateSet[t] }
+func IsConcLimit(t string) bool { return concSet[t] }
+
+// RateLimits returns the request-rate limit types governing op: the group
+// limit first, then the operation's own limit.
+func RateLimits(op Operation) []string { return rateByOp[op] }
+
+// ConcLimits returns the concurrency limit types governing op.
+func ConcLimits(op Operation) []string { return concByOp[op] }
 
 // Bandwidth modes (a configuration-wide decision).
 const (

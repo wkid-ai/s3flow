@@ -20,8 +20,9 @@ that runs a backend performing real SigV4 verification behind the proxy.
 | `aggregateBandwidthIn/Out` | shared limiter per policy |
 | `perRequestBandwidthIn/Out` | independent limiter per request |
 | Aggregate and per-request cannot be mixed | enforced via `bandwidthMode` setting (policies violating it are rejected with 422) |
-| `read/writeRequestRate` | token bucket; GET/HEAD = read, others = write |
+| `read/writeRequestRate` | token bucket; GET/HEAD/LIST = read group, everything else = write group |
 | `concurrentRead/WriteRequests` | counting gate; slots rolled back on partial failure |
+| Per-operation limits (get, head, list, put, copy, multipart, delete) | optional rate and concurrency limit per operation, layered on the group limits (see below) |
 | Over-limit behaviour | 250 ms delay then `503 SlowDown` (S3 XML error) – no queue |
 | Request/concurrency limits apply from *any* matching policy | implemented |
 | Tenant = access key ID, else bucket owner | `/api/v1/tenants` mapping (access keys and owned buckets); handles SigV4, SigV2 and presigned URLs |
@@ -31,6 +32,55 @@ that runs a backend performing real SigV4 verification behind the proxy.
 
 Not provided: a GUI, and any *guarantee* of backend performance – these are
 ceilings, not reservations.
+
+## Read/write groups and per-operation limits
+
+Every request is classified into one S3 operation from its method, path, query
+string and `x-amz-copy-source` header (the signed request is not touched):
+
+| Operation | Group | Requests |
+|---|---|---|
+| `get` | read | GetObject, bucket/object sub-resource reads (`?acl`, `?tagging`, `?versioning`, ...) |
+| `head` | read | HeadObject, HeadBucket |
+| `list` | read | ListBuckets, ListObjects/ListObjectsV2, ListObjectVersions, ListMultipartUploads, ListParts |
+| `put` | write | PutObject, CreateBucket, sub-resource writes, POST uploads |
+| `copy` | write | CopyObject |
+| `multipart` | write | Initiate, UploadPart(Copy), Complete, Abort |
+| `delete` | write | DeleteObject, DeleteObjects (`POST ?delete`), DeleteBucket |
+| `other` | write | any other method |
+
+Two kinds of limit can be combined in the same policy:
+
+* **Group limits** – `readRequestRate`, `writeRequestRate`,
+  `concurrentReadRequests`, `concurrentWriteRequests` cap the whole group.
+* **Operation limits** – `<op>RequestRate` and `concurrent<Op>Requests`
+  (`getRequestRate`, `concurrentListRequests`, `deleteRequestRate`,
+  `concurrentMultipartRequests`, ...) cap a single operation.
+
+A request must satisfy **both** its group limit and its own operation limit
+(and the limits of every matching policy). Operations without an operation
+limit are governed by the group limit alone, so you can limit a group as a whole
+and fine-tune only some operations, or leave a group unlimited and limit just
+one operation:
+
+```json
+{ "name": "tame-listing-and-deletes",
+  "matchers": [{"type": "tenant", "members": ["acme"]}],
+  "limits": [
+    {"type": "writeRequestRate",   "value": 500},
+    {"type": "deleteRequestRate",  "value": 50},
+    {"type": "listRequestRate",    "value": 20},
+    {"type": "concurrentListRequests", "value": 4}] }
+```
+
+Here reads other than LIST are unlimited, writes share 500 req/s, and deletes
+are additionally held to 50 req/s within that. A request rejected by an
+operation limit does not consume group tokens or concurrency slots. Rejections
+report the limit that fired in the `limit` label of
+`s3qos_policy_throttled_total`.
+
+Bandwidth limits are not per operation: they follow the direction of the data
+(upload = in, download = out) and use the best-match policy as before.
 
 ## Build / run
 
@@ -121,11 +171,11 @@ metrics, then add limits.
 
 ## Metrics
 
-`s3qos_requests_total{endpoint,type,class,code}`,
+`s3qos_requests_total{endpoint,type,class,op,code}`,
 `s3qos_policy_requests_total{policy}`,
-`s3qos_policy_throttled_total{policy,reason=rate|concurrency}`,
+`s3qos_policy_throttled_total{policy,reason=rate|concurrency,limit}`,
 `s3qos_policy_bytes_total{policy,direction=in|out}`,
-`s3qos_policy_active_requests{policy,class}`,
+`s3qos_policy_active_requests{policy,limit}` (one series per concurrency limit in use),
 `s3qos_backend_up{endpoint,backend}`, `s3qos_fleet_share_divisor`,
 `s3qos_request_seconds_sum_micro{endpoint,class}`.
 

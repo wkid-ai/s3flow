@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"s3qos/internal/policy"
 )
 
 func req(method, target, host string, hdr map[string]string) *http.Request {
@@ -86,5 +88,57 @@ func TestClientIPTrust(t *testing.T) {
 	r.RemoteAddr = "198.51.100.7:1234" // untrusted peer spoofing XFF
 	if ip := c.ClientIP(r); ip.String() != "198.51.100.7" {
 		t.Errorf("untrusted peer must ignore XFF: got %v", ip)
+	}
+}
+
+func TestOperationClassification(t *testing.T) {
+	c := &Classifier{BaseDomains: []string{"s3.example.com"}}
+	cases := []struct {
+		name, method, target, host string
+		hdr                        map[string]string
+		want                       policy.Operation
+	}{
+		{"GetObject", "GET", "/b/k", "s3.example.com", nil, policy.OpGet},
+		{"GetObject vhost", "GET", "/dir/k", "b.s3.example.com", nil, policy.OpGet},
+		{"GetObject range", "GET", "/b/k?versionId=1", "s3.example.com", nil, policy.OpGet},
+		{"HeadObject", "HEAD", "/b/k", "s3.example.com", nil, policy.OpHead},
+		{"HeadBucket", "HEAD", "/b", "s3.example.com", nil, policy.OpHead},
+		{"ListBuckets", "GET", "/", "s3.example.com", nil, policy.OpList},
+		{"ListObjectsV2", "GET", "/b?list-type=2&prefix=x", "s3.example.com", nil, policy.OpList},
+		{"ListObjectsV2 vhost", "GET", "/?list-type=2", "b.s3.example.com", nil, policy.OpList},
+		{"ListObjectsV2 trailing slash", "GET", "/b/?list-type=2", "s3.example.com", nil, policy.OpList},
+		{"ListVersions", "GET", "/b?versions", "s3.example.com", nil, policy.OpList},
+		{"ListMultipartUploads", "GET", "/b?uploads", "s3.example.com", nil, policy.OpList},
+		{"ListParts", "GET", "/b/k?uploadId=u", "s3.example.com", nil, policy.OpList},
+		{"GetBucketAcl is a get", "GET", "/b?acl", "s3.example.com", nil, policy.OpGet},
+		{"GetObjectTagging", "GET", "/b/k?tagging", "s3.example.com", nil, policy.OpGet},
+		{"PutObject", "PUT", "/b/k", "s3.example.com", nil, policy.OpPut},
+		{"CreateBucket", "PUT", "/b", "s3.example.com", nil, policy.OpPut},
+		{"CopyObject", "PUT", "/b/k", "s3.example.com", map[string]string{"X-Amz-Copy-Source": "/b/src"}, policy.OpCopy},
+		{"UploadPart", "PUT", "/b/k?partNumber=1&uploadId=u", "s3.example.com", nil, policy.OpMultipart},
+		{"UploadPartCopy", "PUT", "/b/k?partNumber=1&uploadId=u", "s3.example.com", map[string]string{"X-Amz-Copy-Source": "/b/s"}, policy.OpMultipart},
+		{"InitiateMultipart", "POST", "/b/k?uploads", "s3.example.com", nil, policy.OpMultipart},
+		{"CompleteMultipart", "POST", "/b/k?uploadId=u", "s3.example.com", nil, policy.OpMultipart},
+		{"AbortMultipart", "DELETE", "/b/k?uploadId=u", "s3.example.com", nil, policy.OpMultipart},
+		{"DeleteObject", "DELETE", "/b/k", "s3.example.com", nil, policy.OpDelete},
+		{"DeleteBucket", "DELETE", "/b", "s3.example.com", nil, policy.OpDelete},
+		{"DeleteObjects", "POST", "/b?delete", "s3.example.com", nil, policy.OpDelete},
+		{"POST select", "POST", "/b/k?select&select-type=2", "s3.example.com", nil, policy.OpPut},
+		{"OPTIONS", "OPTIONS", "/b/k", "s3.example.com", nil, policy.OpOther},
+	}
+	for _, tc := range cases {
+		if got := c.Operation(req(tc.method, tc.target, tc.host, tc.hdr)); got != tc.want {
+			t.Errorf("%s: got %q want %q", tc.name, got, tc.want)
+		}
+	}
+	for _, op := range []policy.Operation{policy.OpGet, policy.OpHead, policy.OpList} {
+		if !op.IsRead() {
+			t.Errorf("%s should be in the read group", op)
+		}
+	}
+	for _, op := range []policy.Operation{policy.OpPut, policy.OpCopy, policy.OpMultipart, policy.OpDelete, policy.OpOther} {
+		if op.IsRead() {
+			t.Errorf("%s should be in the write group", op)
+		}
 	}
 }

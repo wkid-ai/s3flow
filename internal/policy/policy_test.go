@@ -109,3 +109,26 @@ func TestValidation(t *testing.T) {
 		t.Error("unknown endpoint should be rejected")
 	}
 }
+
+func TestOperationLimitTypes(t *testing.T) {
+	ok := func(string) bool { return true }
+	all := []Limit{{"getRequestRate", 1}, {"headRequestRate", 1}, {"listRequestRate", 1}, {"putRequestRate", 1},
+		{"copyRequestRate", 1}, {"multipartRequestRate", 1}, {"deleteRequestRate", 1},
+		{"concurrentGetRequests", 1}, {"concurrentHeadRequests", 1}, {"concurrentListRequests", 1}, {"concurrentPutRequests", 1},
+		{"concurrentCopyRequests", 1}, {"concurrentMultipartRequests", 1}, {"concurrentDeleteRequests", 1}}
+	if _, err := Compile(Policy{Name: "a", Limits: all}, ModeAggregate, ok); err != nil {
+		t.Fatalf("all per-operation limits must be accepted: %v", err)
+	}
+	if _, err := Compile(Policy{Name: "a", Limits: []Limit{{"listRequestRate", 1}, {"listRequestRate", 2}}}, ModeAggregate, ok); err == nil {
+		t.Fatal("duplicate per-operation limit must be rejected")
+	}
+	if got := RateLimits(OpDelete); len(got) != 2 || got[0] != WriteRate || got[1] != "deleteRequestRate" {
+		t.Fatalf("delete rate limits: %v", got)
+	}
+	if got := ConcLimits(OpList); len(got) != 2 || got[0] != ConcRead || got[1] != "concurrentListRequests" {
+		t.Fatalf("list conc limits: %v", got)
+	}
+	if got := RateLimits(OpOther); len(got) != 1 || got[0] != WriteRate {
+		t.Fatalf("other: %v", got)
+	}
+}

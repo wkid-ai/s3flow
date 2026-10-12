@@ -306,8 +306,54 @@ func TestMetricsExposed(t *testing.T) {
 	for _, want := range []string{
 		`s3qos_policy_requests_total{policy="m"} 1`,
 		`s3qos_policy_bytes_total{policy="m",direction="out"} 400000`,
-		`s3qos_requests_total{endpoint="main",type="ceph",class="read",code="2xx"} 1`,
+		`s3qos_requests_total{endpoint="main",type="ceph",class="read",op="get",code="2xx"} 1`,
 		`s3qos_backend_up{endpoint="main"`,
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("metrics missing %q\n%s", want, out.String())
+		}
+	}
+}
+
+func TestPerOperationLimitsThroughProxy(t *testing.T) {
+	be := fakeS3()
+	defer be.Close()
+	e := setup(t, be.URL, func(s *store.State) {
+		s.Policies = []policy.Policy{{ID: "1", Name: "ops", Matchers: []policy.Matcher{{Type: "endpoint", Members: []string{"main"}}},
+			Limits: []policy.Limit{{Type: "listRequestRate", Value: 1}, {Type: "deleteRequestRate", Value: 1}}}}
+	})
+	status := func(method, path string) int {
+		resp, _, _ := e.do(t, method, path, nil)
+		return resp.StatusCode
+	}
+	if c := status("GET", "/b?list-type=2"); c != 200 {
+		t.Fatalf("first LIST: %d", c)
+	}
+	if c := status("GET", "/b?list-type=2"); c != 503 {
+		t.Fatalf("second LIST should be throttled, got %d", c)
+	}
+	// GET object is a different operation: not throttled by the list limit.
+	for i := 0; i < 3; i++ {
+		if c := status("GET", "/b/k"); c != 200 {
+			t.Fatalf("GET object %d: %d", i, c)
+		}
+	}
+	if c := status("DELETE", "/b/k"); c != 200 {
+		t.Fatalf("first DELETE: %d", c)
+	}
+	if c := status("DELETE", "/b/k2"); c != 503 {
+		t.Fatalf("second DELETE should be throttled, got %d", c)
+	}
+	// PUT is untouched by the delete limit.
+	if resp, _, _ := e.do(t, "PUT", "/b/o", []byte("x")); resp.StatusCode != 200 {
+		t.Fatalf("PUT: %d", resp.StatusCode)
+	}
+	var out bytes.Buffer
+	e.reg.Write(&out)
+	for _, want := range []string{
+		`s3qos_policy_throttled_total{policy="ops",reason="rate",limit="listRequestRate"} 1`,
+		`s3qos_policy_throttled_total{policy="ops",reason="rate",limit="deleteRequestRate"} 1`,
+		`op="list",code="503"`,
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("metrics missing %q\n%s", want, out.String())
