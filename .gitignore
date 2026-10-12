@@ -1,0 +1,4 @@
+bin/
+state.json
+*.log
+.DS_Store

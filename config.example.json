@@ -1,0 +1,40 @@
+{
+  "nodeId": "s3qos-1",
+  "adminListen": "0.0.0.0:9090",
+  "adminTokenEnv": "S3QOS_ADMIN_TOKEN",
+  "clusterTokenEnv": "S3QOS_CLUSTER_TOKEN",
+  "peers": ["http://s3qos-2:9090", "http://s3qos-3:9090"],
+  "syncInterval": "2s",
+  "statePath": "/var/lib/s3qos/state.json",
+  "baseDomains": ["s3.example.com"],
+  "trustedProxies": [],
+  "endpoints": [
+    {
+      "name": "ceph",
+      "type": "ceph",
+      "listen": ":8443",
+      "tlsCert": "/etc/s3qos/tls.crt",
+      "tlsKey": "/etc/s3qos/tls.key",
+      "backends": ["https://rgw1.example.com:443", "https://rgw2.example.com:443"],
+      "backendCA": "/etc/s3qos/backend-ca.pem"
+    },
+    {
+      "name": "scale",
+      "type": "scale",
+      "listen": ":8444",
+      "tlsCert": "/etc/s3qos/tls.crt",
+      "tlsKey": "/etc/s3qos/tls.key",
+      "backends": ["https://ces1.example.com:6443", "https://ces2.example.com:6443"],
+      "backendCA": "/etc/s3qos/backend-ca.pem"
+    },
+    {
+      "name": "icos",
+      "type": "icos",
+      "listen": ":8445",
+      "tlsCert": "/etc/s3qos/tls.crt",
+      "tlsKey": "/etc/s3qos/tls.key",
+      "backends": ["https://accesser1.example.com:443", "https://accesser2.example.com:443"],
+      "backendCA": "/etc/s3qos/backend-ca.pem"
+    }
+  ]
+}
