@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"s3qos/internal/policy"
+	"s3flow/internal/policy"
 )
 
 func names(st State) map[string]policy.Policy {

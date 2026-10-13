@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"s3qos/internal/admin"
-	"s3qos/internal/cluster"
-	"s3qos/internal/config"
-	"s3qos/internal/engine"
-	"s3qos/internal/metrics"
-	"s3qos/internal/store"
+	"s3flow/internal/admin"
+	"s3flow/internal/cluster"
+	"s3flow/internal/config"
+	"s3flow/internal/engine"
+	"s3flow/internal/metrics"
+	"s3flow/internal/store"
 )
 
 const tok = "0123456789abcdef-admin"

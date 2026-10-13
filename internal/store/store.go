@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"s3qos/internal/policy"
+	"s3flow/internal/policy"
 )
 
 // Tenant maps S3 access keys and buckets (ownership) to a tenant identity.

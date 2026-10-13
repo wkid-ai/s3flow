@@ -128,6 +128,7 @@ legend { font-weight: 600; padding: 0 6px; }
 .login { max-width: 380px; margin: 12vh auto; }
 .login .card { padding: 24px; }
 .login h1 { font-size: 20px; margin-bottom: 4px; }
+.login p.tagline { margin: 0 0 14px; font-size: 13px; }
 .login p { color: var(--muted); margin: 0 0 16px; }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }

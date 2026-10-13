@@ -1,8 +1,8 @@
-/* s3qos UI – pure helpers (no DOM). Loaded by the browser as window.S3QOS and
+/* s3flow UI – pure helpers (no DOM). Loaded by the browser as window.S3FLOW and
  * by `node --test` as a CommonJS module. */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.S3QOS = factory();
+  else root.S3FLOW = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 

@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"s3qos/internal/policy"
+	"s3flow/internal/policy"
 )
 
 // Resolver maps identities to tenants.

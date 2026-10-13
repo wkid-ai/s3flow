@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"s3qos/internal/store"
+	"s3flow/internal/store"
 )
 
 type Wire struct {

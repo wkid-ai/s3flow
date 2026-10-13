@@ -1,6 +1,6 @@
 .PHONY: build test vet ui-test
 build:
-	go build -trimpath -o bin/s3qos ./cmd/s3qos
+	go build -trimpath -o bin/s3flow ./cmd/s3flow
 vet:
 	go vet ./...
 test: ui-test

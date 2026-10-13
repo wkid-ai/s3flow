@@ -10,11 +10,11 @@ import (
 	"net/http"
 	"strings"
 
-	"s3qos/internal/cluster"
-	"s3qos/internal/metrics"
-	"s3qos/internal/policy"
-	"s3qos/internal/store"
-	"s3qos/internal/ui"
+	"s3flow/internal/cluster"
+	"s3flow/internal/metrics"
+	"s3flow/internal/policy"
+	"s3flow/internal/store"
+	"s3flow/internal/ui"
 )
 
 type API struct {
@@ -81,7 +81,7 @@ func (a *API) auth(h http.HandlerFunc) http.HandlerFunc {
 }
 
 func unauthorized(w http.ResponseWriter) {
-	w.Header().Set("WWW-Authenticate", `Bearer realm="s3qos"`)
+	w.Header().Set("WWW-Authenticate", `Bearer realm="s3flow"`)
 	writeErr(w, 401, "unauthorized")
 }
 

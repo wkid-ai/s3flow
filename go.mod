@@ -1,3 +1,3 @@
-module s3qos
+module s3flow
 
 go 1.22

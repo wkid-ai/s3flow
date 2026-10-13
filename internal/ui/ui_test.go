@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"s3qos/internal/ui"
+	"s3flow/internal/ui"
 )
 
 func get(t *testing.T, path string) *httptest.ResponseRecorder {

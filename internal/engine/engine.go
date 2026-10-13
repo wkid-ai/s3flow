@@ -10,10 +10,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"s3qos/internal/limit"
-	"s3qos/internal/metrics"
-	"s3qos/internal/policy"
-	"s3qos/internal/store"
+	"s3flow/internal/limit"
+	"s3flow/internal/metrics"
+	"s3flow/internal/policy"
+	"s3flow/internal/store"
 )
 
 const (
@@ -134,9 +134,9 @@ func (e *Engine) newRuntime(name string) *runtime {
 			}}
 		}
 	}
-	rt.requests = e.reg.Counter("s3qos_policy_requests_total", "policy", name)
-	rt.bytesIn = e.reg.Counter("s3qos_policy_bytes_total", "policy", name, "direction", "in")
-	rt.bytesOut = e.reg.Counter("s3qos_policy_bytes_total", "policy", name, "direction", "out")
+	rt.requests = e.reg.Counter("s3flow_policy_requests_total", "policy", name)
+	rt.bytesIn = e.reg.Counter("s3flow_policy_bytes_total", "policy", name, "direction", "in")
+	rt.bytesOut = e.reg.Counter("s3flow_policy_bytes_total", "policy", name, "direction", "out")
 	return rt
 }
 
@@ -203,7 +203,7 @@ func (e *Engine) Admit(a policy.Attrs, op policy.Operation) *Decision {
 	reject := func(rt *runtime, reason, lim string) *Decision {
 		name := rt.c.Load().Name
 		d.Rejected, d.Reason, d.Policy, d.Limit = true, reason, name, lim
-		e.reg.Counter("s3qos_policy_throttled_total", "policy", name, "reason", reason, "limit", lim).Add(1)
+		e.reg.Counter("s3flow_policy_throttled_total", "policy", name, "reason", reason, "limit", lim).Add(1)
 		return d
 	}
 	// Request rate: every matching policy must allow. Tokens already taken are
@@ -295,8 +295,8 @@ func (e *Engine) collect(w io.Writer) {
 			if cg == nil || (rt.val[slot].Load() <= 0 && cg.Active() == 0) {
 				continue
 			}
-			fmt.Fprintf(w, "%s %d\n", metrics.Label("s3qos_policy_active_requests", "policy", rt.c.Load().Name, "limit", t), cg.Active())
+			fmt.Fprintf(w, "%s %d\n", metrics.Label("s3flow_policy_active_requests", "policy", rt.c.Load().Name, "limit", t), cg.Active())
 		}
 	}
-	fmt.Fprintf(w, "s3qos_fleet_share_divisor %g\n", e.share())
+	fmt.Fprintf(w, "s3flow_fleet_share_divisor %g\n", e.share())
 }

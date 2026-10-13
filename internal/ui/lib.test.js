@@ -5,12 +5,12 @@ const L = require('./static/lib.js');
 test('parseMetrics handles labels, escapes, and skips comments/garbage', () => {
   const s = L.parseMetrics([
     '# HELP x',
-    's3qos_requests_total{endpoint="main",type="ceph",class="read",op="get",code="2xx"} 12',
-    's3qos_fleet_share_divisor 4',
-    's3qos_policy_throttled_total{policy="a \\"q\\" b",reason="rate",limit="listRequestRate"} 3',
+    's3flow_requests_total{endpoint="main",type="ceph",class="read",op="get",code="2xx"} 12',
+    's3flow_fleet_share_divisor 4',
+    's3flow_policy_throttled_total{policy="a \\"q\\" b",reason="rate",limit="listRequestRate"} 3',
     'bad line',
-    's3qos_x{a="}"} 5',
-    's3qos_nan NaN',
+    's3flow_x{a="}"} 5',
+    's3flow_nan NaN',
   ].join('\n'));
   assert.equal(s.length, 4);
   assert.equal(s[0].labels.op, 'get');

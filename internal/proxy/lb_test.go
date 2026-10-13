@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"s3qos/internal/classify"
-	"s3qos/internal/engine"
-	"s3qos/internal/metrics"
-	"s3qos/internal/proxy"
-	"s3qos/internal/store"
+	"s3flow/internal/classify"
+	"s3flow/internal/engine"
+	"s3flow/internal/metrics"
+	"s3flow/internal/proxy"
+	"s3flow/internal/store"
 )
 
 // countingBackend is a plain HTTP server that counts the requests it serves.
@@ -196,7 +196,7 @@ func TestActiveHealthCheckRemovesAndRestoresBackend(t *testing.T) {
 		for {
 			var sb strings.Builder
 			reg.Write(&sb)
-			if strings.Contains(sb.String(), fmt.Sprintf(`s3qos_backend_up{endpoint="main",backend="%s"} %s`, host, want)) {
+			if strings.Contains(sb.String(), fmt.Sprintf(`s3flow_backend_up{endpoint="main",backend="%s"} %s`, host, want)) {
 				return
 			}
 			if time.Now().After(deadline) {
@@ -240,13 +240,13 @@ func TestBackendPerPortAndMetrics(t *testing.T) {
 	reg.Write(&sb)
 	for _, u := range []*countingBackend{a, b} {
 		h := strings.TrimPrefix(u.URL, "http://")
-		for _, name := range []string{"s3qos_backend_requests_total", "s3qos_backend_active_requests", "s3qos_backend_weight"} {
+		for _, name := range []string{"s3flow_backend_requests_total", "s3flow_backend_active_requests", "s3flow_backend_weight"} {
 			if !strings.Contains(sb.String(), fmt.Sprintf(`%s{endpoint="main",backend="%s"}`, name, h)) {
 				t.Errorf("missing %s for %s\n%s", name, h, sb.String())
 			}
 		}
 	}
-	if !strings.Contains(sb.String(), fmt.Sprintf(`s3qos_backend_weight{endpoint="main",backend="%s"} 2`, strings.TrimPrefix(b.URL, "http://"))) {
+	if !strings.Contains(sb.String(), fmt.Sprintf(`s3flow_backend_weight{endpoint="main",backend="%s"} 2`, strings.TrimPrefix(b.URL, "http://"))) {
 		t.Errorf("weight metric wrong\n%s", sb.String())
 	}
 	if a.hits.Load() != 2 || b.hits.Load() != 4 {

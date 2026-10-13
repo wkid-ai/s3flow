@@ -1,11 +1,11 @@
 {
-  "nodeId": "s3qos-1",
+  "nodeId": "s3flow-1",
   "adminListen": "0.0.0.0:9090",
-  "adminTokenEnv": "S3QOS_ADMIN_TOKEN",
-  "clusterTokenEnv": "S3QOS_CLUSTER_TOKEN",
-  "peers": ["http://s3qos-2:9090", "http://s3qos-3:9090"],
+  "adminTokenEnv": "S3FLOW_ADMIN_TOKEN",
+  "clusterTokenEnv": "S3FLOW_CLUSTER_TOKEN",
+  "peers": ["http://s3flow-2:9090", "http://s3flow-3:9090"],
   "syncInterval": "2s",
-  "statePath": "/var/lib/s3qos/state.json",
+  "statePath": "/var/lib/s3flow/state.json",
   "baseDomains": ["s3.example.com"],
   "trustedProxies": [],
   "endpoints": [
@@ -14,8 +14,8 @@
       "type": "ceph",
       "listen": "10.1.0.10:443",
       "listeners": ["10.1.0.11:443", "10.1.0.10:8443"],
-      "tlsCert": "/etc/s3qos/tls.crt",
-      "tlsKey": "/etc/s3qos/tls.key",
+      "tlsCert": "/etc/s3flow/tls.crt",
+      "tlsKey": "/etc/s3flow/tls.key",
       "backends": [
         "https://10.2.0.21:443",
         "https://10.2.0.22:443",
@@ -27,26 +27,26 @@
       "healthInterval": "5s",
       "healthTimeout": "2s",
       "backendDownFor": "5s",
-      "backendCA": "/etc/s3qos/backend-ca.pem"
+      "backendCA": "/etc/s3flow/backend-ca.pem"
     },
     {
       "name": "scale",
       "type": "scale",
       "listen": ":8444",
-      "tlsCert": "/etc/s3qos/tls.crt",
-      "tlsKey": "/etc/s3qos/tls.key",
+      "tlsCert": "/etc/s3flow/tls.crt",
+      "tlsKey": "/etc/s3flow/tls.key",
       "backends": ["https://ces1.example.com:6443", "https://ces2.example.com:6443"],
-      "backendCA": "/etc/s3qos/backend-ca.pem"
+      "backendCA": "/etc/s3flow/backend-ca.pem"
     },
     {
       "name": "icos",
       "type": "icos",
       "listen": ":8445",
-      "tlsCert": "/etc/s3qos/tls.crt",
-      "tlsKey": "/etc/s3qos/tls.key",
+      "tlsCert": "/etc/s3flow/tls.crt",
+      "tlsKey": "/etc/s3flow/tls.key",
       "backends": ["https://accesser1.example.com:443", "https://accesser2.example.com:443"],
       "healthPath": "/",
-      "backendCA": "/etc/s3qos/backend-ca.pem"
+      "backendCA": "/etc/s3flow/backend-ca.pem"
     }
   ]
 }

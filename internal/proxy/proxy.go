@@ -20,10 +20,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"s3qos/internal/classify"
-	"s3qos/internal/engine"
-	"s3qos/internal/limit"
-	"s3qos/internal/metrics"
+	"s3flow/internal/classify"
+	"s3flow/internal/engine"
+	"s3flow/internal/limit"
+	"s3flow/internal/metrics"
 )
 
 // SlowDownDelay is how long a rejected request is held before the 503 is sent.
@@ -160,7 +160,7 @@ func NewEndpoint(cfg EndpointConfig, cls *classify.Classifier, eng *engine.Engin
 		},
 		ModifyResponse: func(resp *http.Response) error {
 			if d, _ := resp.Request.Context().Value(decisionKey{}).(*engine.Decision); d != nil {
-				outBytes := e.reg.Counter("s3qos_endpoint_bytes_total", "endpoint", cfg.Name, "direction", "out")
+				outBytes := e.reg.Counter("s3flow_endpoint_bytes_total", "endpoint", cfg.Name, "direction", "out")
 				resp.Body = &shapedReader{rc: resp.Body, ctx: resp.Request.Context(), bw: d.Out, count: func(n int) { d.AddOut(n); outBytes.Add(uint64(n)) }}
 			}
 			return nil
@@ -184,9 +184,9 @@ func NewEndpoint(cfg EndpointConfig, cls *classify.Classifier, eng *engine.Engin
 			if !b.healthy() {
 				v = 0
 			}
-			fmt.Fprintf(w, "%s %d\n", metrics.Label("s3qos_backend_up", "endpoint", cfg.Name, "backend", b.URL.Host), v)
-			fmt.Fprintf(w, "%s %d\n", metrics.Label("s3qos_backend_active_requests", "endpoint", cfg.Name, "backend", b.URL.Host), b.active.Load())
-			fmt.Fprintf(w, "%s %d\n", metrics.Label("s3qos_backend_weight", "endpoint", cfg.Name, "backend", b.URL.Host), b.Weight)
+			fmt.Fprintf(w, "%s %d\n", metrics.Label("s3flow_backend_up", "endpoint", cfg.Name, "backend", b.URL.Host), v)
+			fmt.Fprintf(w, "%s %d\n", metrics.Label("s3flow_backend_active_requests", "endpoint", cfg.Name, "backend", b.URL.Host), b.active.Load())
+			fmt.Fprintf(w, "%s %d\n", metrics.Label("s3flow_backend_weight", "endpoint", cfg.Name, "backend", b.URL.Host), b.Weight)
 		}
 	})
 	return e, nil
@@ -304,8 +304,8 @@ func (e *Endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if d.Rejected {
 			code = "503"
 		}
-		e.reg.Counter("s3qos_requests_total", "endpoint", e.cfg.Name, "type", e.cfg.Type, "class", class, "op", string(op), "code", code).Add(1)
-		e.reg.Counter("s3qos_request_seconds_sum_micro", "endpoint", e.cfg.Name, "class", class).Add(uint64(time.Since(begin).Microseconds()))
+		e.reg.Counter("s3flow_requests_total", "endpoint", e.cfg.Name, "type", e.cfg.Type, "class", class, "op", string(op), "code", code).Add(1)
+		e.reg.Counter("s3flow_request_seconds_sum_micro", "endpoint", e.cfg.Name, "class", class).Add(uint64(time.Since(begin).Microseconds()))
 	}()
 
 	if d.Rejected {
@@ -324,12 +324,12 @@ func (e *Endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	b := e.pick()
 	defer b.active.Add(-1)
-	e.reg.Counter("s3qos_backend_requests_total", "endpoint", e.cfg.Name, "backend", b.URL.Host).Add(1)
+	e.reg.Counter("s3flow_backend_requests_total", "endpoint", e.cfg.Name, "backend", b.URL.Host).Add(1)
 	ctx := context.WithValue(r.Context(), backendKey{}, b)
 	ctx = context.WithValue(ctx, decisionKey{}, d)
 	r = r.WithContext(ctx)
 	if r.Body != nil && r.Body != http.NoBody {
-		inBytes := e.reg.Counter("s3qos_endpoint_bytes_total", "endpoint", e.cfg.Name, "direction", "in")
+		inBytes := e.reg.Counter("s3flow_endpoint_bytes_total", "endpoint", e.cfg.Name, "direction", "in")
 		r.Body = &shapedReader{rc: r.Body, ctx: ctx, bw: d.In, count: func(n int) { d.AddIn(n); inBytes.Add(uint64(n)) }}
 	}
 	e.rp.ServeHTTP(rec, r)

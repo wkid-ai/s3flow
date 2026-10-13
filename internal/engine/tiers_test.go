@@ -3,8 +3,8 @@ package engine
 import (
 	"testing"
 
-	"s3qos/internal/policy"
-	"s3qos/internal/store"
+	"s3flow/internal/policy"
+	"s3flow/internal/store"
 )
 
 // The built-in tiers must pass the engine's own validation, match nothing

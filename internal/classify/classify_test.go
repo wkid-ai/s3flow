@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"s3qos/internal/policy"
+	"s3flow/internal/policy"
 )
 
 func req(method, target, host string, hdr map[string]string) *http.Request {

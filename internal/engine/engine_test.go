@@ -4,9 +4,9 @@ import (
 	"net"
 	"testing"
 
-	"s3qos/internal/metrics"
-	"s3qos/internal/policy"
-	"s3qos/internal/store"
+	"s3flow/internal/metrics"
+	"s3flow/internal/policy"
+	"s3flow/internal/store"
 )
 
 func newEngine(t *testing.T, st store.State) *Engine {

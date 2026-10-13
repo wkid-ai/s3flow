@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"s3qos/internal/classify"
-	"s3qos/internal/engine"
-	"s3qos/internal/metrics"
-	"s3qos/internal/policy"
-	"s3qos/internal/proxy"
-	"s3qos/internal/store"
+	"s3flow/internal/classify"
+	"s3flow/internal/engine"
+	"s3flow/internal/metrics"
+	"s3flow/internal/policy"
+	"s3flow/internal/proxy"
+	"s3flow/internal/store"
 )
 
 const (
@@ -304,10 +304,10 @@ func TestMetricsExposed(t *testing.T) {
 	var out bytes.Buffer
 	e.reg.Write(&out)
 	for _, want := range []string{
-		`s3qos_policy_requests_total{policy="m"} 1`,
-		`s3qos_policy_bytes_total{policy="m",direction="out"} 400000`,
-		`s3qos_requests_total{endpoint="main",type="ceph",class="read",op="get",code="2xx"} 1`,
-		`s3qos_backend_up{endpoint="main"`,
+		`s3flow_policy_requests_total{policy="m"} 1`,
+		`s3flow_policy_bytes_total{policy="m",direction="out"} 400000`,
+		`s3flow_requests_total{endpoint="main",type="ceph",class="read",op="get",code="2xx"} 1`,
+		`s3flow_backend_up{endpoint="main"`,
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("metrics missing %q\n%s", want, out.String())
@@ -351,8 +351,8 @@ func TestPerOperationLimitsThroughProxy(t *testing.T) {
 	var out bytes.Buffer
 	e.reg.Write(&out)
 	for _, want := range []string{
-		`s3qos_policy_throttled_total{policy="ops",reason="rate",limit="listRequestRate"} 1`,
-		`s3qos_policy_throttled_total{policy="ops",reason="rate",limit="deleteRequestRate"} 1`,
+		`s3flow_policy_throttled_total{policy="ops",reason="rate",limit="listRequestRate"} 1`,
+		`s3flow_policy_throttled_total{policy="ops",reason="rate",limit="deleteRequestRate"} 1`,
 		`op="list",code="503"`,
 	} {
 		if !strings.Contains(out.String(), want) {

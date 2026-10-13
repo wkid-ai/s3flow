@@ -1,4 +1,4 @@
-// Command s3qos is a transparent S3 front-end proxy with QoS
+// Command s3flow is a transparent S3 front-end proxy with QoS
 // for IBM Storage Ceph, Storage Scale CES S3 and IBM Cloud Object Storage.
 package main
 
@@ -12,15 +12,15 @@ import (
 	"syscall"
 	"time"
 
-	"s3qos/internal/admin"
-	"s3qos/internal/classify"
-	"s3qos/internal/cluster"
-	"s3qos/internal/config"
-	"s3qos/internal/engine"
-	"s3qos/internal/metrics"
-	"s3qos/internal/policy"
-	"s3qos/internal/proxy"
-	"s3qos/internal/store"
+	"s3flow/internal/admin"
+	"s3flow/internal/classify"
+	"s3flow/internal/cluster"
+	"s3flow/internal/config"
+	"s3flow/internal/engine"
+	"s3flow/internal/metrics"
+	"s3flow/internal/policy"
+	"s3flow/internal/proxy"
+	"s3flow/internal/store"
 )
 
 func main() {

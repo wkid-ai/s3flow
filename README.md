@@ -1,6 +1,9 @@
-# s3qos – transparent S3 front-end proxy with QoS
+# S3Flow
 
-A single static Go binary (standard library only) that sits in front of
+**Policy-driven S3 traffic control for IBM object storage**
+
+S3Flow is a transparent S3 front-end proxy with QoS. A single static Go binary
+(standard library only), `s3flow`, sits in front of
 **IBM Storage Ceph (RGW)**, **Storage Scale CES S3** and **IBM Cloud Object
 Storage (ICOS)** and applies traffic-classification policies (bandwidth,
 request-rate and concurrency limits) to S3 traffic.
@@ -13,7 +16,7 @@ that runs a backend performing real SigV4 verification behind the proxy.
 
 ## Feature mapping
 
-| Capability | s3qos |
+| Capability | S3Flow |
 |---|---|
 | Matchers `bucket`, `bucket-regex`, `tenant`, `cidr` (IPv4), `endpoint`, `inverse` | same names/JSON; OR semantics; regex unanchored |
 | Best-match bandwidth precedence (/32 IP, bucket, regex, tenant, endpoint, CIDR, inverse) | implemented; bandwidth taken from the single winning policy only |
@@ -79,7 +82,7 @@ Here reads other than LIST are unlimited, writes share 500 req/s, and deletes
 are additionally held to 50 req/s within that. A request rejected by an
 operation limit does not consume group tokens or concurrency slots. Rejections
 report the limit that fired in the `limit` label of
-`s3qos_policy_throttled_total`.
+`s3flow_policy_throttled_total`.
 
 Bandwidth limits are not per operation: they follow the direction of the data
 (upload = in, download = out) and use the best-match policy as before.
@@ -123,9 +126,9 @@ throughput after a few minutes of mixed load:
 
 ```sh
 make test build
-export S3QOS_ADMIN_TOKEN=$(openssl rand -hex 24)
-export S3QOS_CLUSTER_TOKEN=$(openssl rand -hex 24)
-./bin/s3qos -config config.example.json
+export S3FLOW_ADMIN_TOKEN=$(openssl rand -hex 24)
+export S3FLOW_CLUSTER_TOKEN=$(openssl rand -hex 24)
+./bin/s3flow -config config.example.json
 ```
 
 Endpoint names are what the `endpoint` matcher refers to. Use one endpoint per
@@ -154,12 +157,12 @@ headers are never changed, so backend signature checks still pass.
 A request already in flight is not retried on another backend, because its body
 may be partly consumed; the client retries after the 502.
 
-Per-backend metrics: `s3qos_backend_up`, `s3qos_backend_weight`,
-`s3qos_backend_active_requests` and `s3qos_backend_requests_total`, each labelled
+Per-backend metrics: `s3flow_backend_up`, `s3flow_backend_weight`,
+`s3flow_backend_active_requests` and `s3flow_backend_requests_total`, each labelled
 `{endpoint,backend}`.
 
-This balances traffic inside one s3qos node. To spread clients across several
-s3qos nodes use DNS round-robin or a VIP in front of them; the nodes share
+This balances traffic inside one S3Flow node. To spread clients across several
+S3Flow nodes use DNS round-robin or a VIP in front of them; the nodes share
 policy and divide fleet-wide limits (see `enforcement`).
 
 ### Separate environments (for example test and prod)
@@ -233,10 +236,10 @@ Notes:
 
 ## Management API
 
-All `/api/*` and `/metrics` calls need `Authorization: Bearer $S3QOS_ADMIN_TOKEN`.
+All `/api/*` and `/metrics` calls need `Authorization: Bearer $S3FLOW_ADMIN_TOKEN`.
 
 ```sh
-A="Authorization: Bearer $S3QOS_ADMIN_TOKEN"; API=http://localhost:9090/api/v1
+A="Authorization: Bearer $S3FLOW_ADMIN_TOKEN"; API=http://localhost:9090/api/v1
 
 # tenant identity mapping (access key -> tenant; bucket ownership for anonymous requests)
 curl -XPUT -H "$A" $API/tenants/acme -d '{"accessKeys":["AKIAEXAMPLE"],"buckets":["backup-prod"]}'
@@ -289,7 +292,7 @@ metrics, then add limits.
 
 ## Operational notes and limitations
 
-* Put an L4 load balancer or DNS round-robin in front of several s3qos nodes;
+* Put an L4 load balancer or DNS round-robin in front of several S3Flow nodes;
   clients must not bypass the proxy (restrict backend access by firewall).
 * TLS is terminated at the proxy and re-originated to the backend with the
   original `Host` header preserved (it is part of the SigV4 signature). The
@@ -301,24 +304,24 @@ metrics, then add limits.
 * Request-rate "started requests" are counted when headers arrive; bandwidth
   limits do not count requests rejected with 503.
 * Not implemented: long-term history (use Prometheus/Grafana on
-  `s3qos_policy_*`), STS/IAM integration, mutual-TLS for the admin API
+  `s3flow_policy_*`), STS/IAM integration, mutual-TLS for the admin API
   (terminate it with `adminTlsCert/adminTlsKey` and a network ACL instead).
 
 ## Metrics
 
-`s3qos_requests_total{endpoint,type,class,op,code}`,
-`s3qos_policy_requests_total{policy}`,
-`s3qos_policy_throttled_total{policy,reason=rate|concurrency,limit}`,
-`s3qos_policy_bytes_total{policy,direction=in|out}`,
-`s3qos_policy_active_requests{policy,limit}` (one series per concurrency limit in use),
-`s3qos_endpoint_bytes_total{endpoint,direction=in|out}`,
-`s3qos_backend_up{endpoint,backend}`, `s3qos_fleet_share_divisor`,
-`s3qos_request_seconds_sum_micro{endpoint,class}`.
+`s3flow_requests_total{endpoint,type,class,op,code}`,
+`s3flow_policy_requests_total{policy}`,
+`s3flow_policy_throttled_total{policy,reason=rate|concurrency,limit}`,
+`s3flow_policy_bytes_total{policy,direction=in|out}`,
+`s3flow_policy_active_requests{policy,limit}` (one series per concurrency limit in use),
+`s3flow_endpoint_bytes_total{endpoint,direction=in|out}`,
+`s3flow_backend_up{endpoint,backend}`, `s3flow_fleet_share_divisor`,
+`s3flow_request_seconds_sum_micro{endpoint,class}`.
 
 ## Layout
 
 ```
-cmd/s3qos            main
+cmd/s3flow            main
 internal/policy      matchers, limits, precedence, validation
 internal/classify    access key / bucket / client IP / tenant extraction
 internal/limit       bandwidth shaper, token bucket, concurrency gate
@@ -334,3 +337,21 @@ internal/config      node configuration
 ## License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
+
+---
+
+### Renamed from s3qos
+
+This project was originally called **s3qos**. If you used an earlier build,
+update these identifiers in scripts, dashboards and Prometheus rules:
+
+| Was | Now |
+|---|---|
+| binary `s3qos` | `s3flow` |
+| `S3QOS_ADMIN_TOKEN`, `S3QOS_CLUSTER_TOKEN` | `S3FLOW_ADMIN_TOKEN`, `S3FLOW_CLUSTER_TOKEN` |
+| metrics `s3qos_*` | `s3flow_*` |
+| Go module `s3qos` | `s3flow` |
+| `/etc/s3qos/`, `/var/lib/s3qos/` | `/etc/s3flow/`, `/var/lib/s3flow/` |
+
+Policies, tenants and the REST API are unchanged, and an existing `state.json`
+loads as is.

@@ -1,11 +1,11 @@
-/* s3qos management console. Talks only to the authenticated /api/v1 endpoints
+/* S3Flow management console. Talks only to the authenticated /api/v1 endpoints
  * and /metrics of the node serving it. DOM is built with createElement (never
  * innerHTML), so data from the API can never inject markup. */
 (function () {
   'use strict';
-  const L = window.S3QOS;
+  const L = window.S3FLOW;
   const POLL_MS = 5000, HISTORY = 60;
-  const TOKEN_KEY = 's3qos_token';
+  const TOKEN_KEY = 's3flow_token';
 
   /* ---------- DOM helpers ---------- */
   const SVGNS = 'http://www.w3.org/2000/svg';
@@ -102,11 +102,11 @@
     S.samples = samples;
     if (dt > 0) {
       const R = (name, want) => L.sum(samples, name, want, 'rate');
-      L.pushHistory(S.hist.req, R('s3qos_requests_total'), HISTORY);
-      L.pushHistory(S.hist.thr, R('s3qos_requests_total', { code: '503' }), HISTORY);
-      L.pushHistory(S.hist.err, R('s3qos_requests_total', (l) => l.code === '4xx' || l.code === '5xx'), HISTORY);
-      L.pushHistory(S.hist.inb, R('s3qos_endpoint_bytes_total', { direction: 'in' }), HISTORY);
-      L.pushHistory(S.hist.outb, R('s3qos_endpoint_bytes_total', { direction: 'out' }), HISTORY);
+      L.pushHistory(S.hist.req, R('s3flow_requests_total'), HISTORY);
+      L.pushHistory(S.hist.thr, R('s3flow_requests_total', { code: '503' }), HISTORY);
+      L.pushHistory(S.hist.err, R('s3flow_requests_total', (l) => l.code === '4xx' || l.code === '5xx'), HISTORY);
+      L.pushHistory(S.hist.inb, R('s3flow_endpoint_bytes_total', { direction: 'in' }), HISTORY);
+      L.pushHistory(S.hist.outb, R('s3flow_endpoint_bytes_total', { direction: 'out' }), HISTORY);
     }
   }
 
@@ -192,16 +192,16 @@
   /* ---------- pages ---------- */
   function pageDashboard() {
     const sm = S.samples, R = (n, w) => L.sum(sm, n, w, 'rate'), T = (n, w) => L.sum(sm, n, w);
-    const up = L.sum(sm, 's3qos_backend_up'), total = sm.filter((x) => x.name === 's3qos_backend_up').length;
-    const thrTotal = T('s3qos_requests_total', { code: '503' });
+    const up = L.sum(sm, 's3flow_backend_up'), total = sm.filter((x) => x.name === 's3flow_backend_up').length;
+    const thrTotal = T('s3flow_requests_total', { code: '503' });
     const cl = S.cluster || {};
     const liveNodes = cl.liveNodes || 1, nodes = (cl.peers ? cl.peers.length : 0) + 1;
     const view = h('div', null,
       h('div', { class: 'grid stats' },
-        stat('Requests / s', L.fmtNum(R('s3qos_requests_total')), L.fmtNum(T('s3qos_requests_total')) + ' since start'),
-        stat('Throttled / s', L.fmtNum(R('s3qos_requests_total', { code: '503' })), L.fmtNum(thrTotal) + ' rejected (503 SlowDown)', thrTotal > 0 ? 'bad' : ''),
-        stat('Upload', L.fmtBytesPerSec(R('s3qos_endpoint_bytes_total', { direction: 'in' })), L.fmtBytes(T('s3qos_endpoint_bytes_total', { direction: 'in' })) + ' total'),
-        stat('Download', L.fmtBytesPerSec(R('s3qos_endpoint_bytes_total', { direction: 'out' })), L.fmtBytes(T('s3qos_endpoint_bytes_total', { direction: 'out' })) + ' total'),
+        stat('Requests / s', L.fmtNum(R('s3flow_requests_total')), L.fmtNum(T('s3flow_requests_total')) + ' since start'),
+        stat('Throttled / s', L.fmtNum(R('s3flow_requests_total', { code: '503' })), L.fmtNum(thrTotal) + ' rejected (503 SlowDown)', thrTotal > 0 ? 'bad' : ''),
+        stat('Upload', L.fmtBytesPerSec(R('s3flow_endpoint_bytes_total', { direction: 'in' })), L.fmtBytes(T('s3flow_endpoint_bytes_total', { direction: 'in' })) + ' total'),
+        stat('Download', L.fmtBytesPerSec(R('s3flow_endpoint_bytes_total', { direction: 'out' })), L.fmtBytes(T('s3flow_endpoint_bytes_total', { direction: 'out' })) + ' total'),
         stat('Backends up', up + ' / ' + total, total && up < total ? 'some backends are marked down' : 'all healthy', total && up < total ? 'bad' : 'ok'),
         stat('Proxy nodes', liveNodes + ' / ' + nodes, 'live / configured', liveNodes < nodes ? 'bad' : 'ok')),
       h('div', { class: 'grid two' },
@@ -217,15 +217,15 @@
     const eps = (S.config && S.config.endpoints) || [];
     const rows = eps.map((e) => {
       const w = { endpoint: e.name };
-      const ups = sm.filter((x) => x.name === 's3qos_backend_up' && x.labels.endpoint === e.name);
+      const ups = sm.filter((x) => x.name === 's3flow_backend_up' && x.labels.endpoint === e.name);
       const upN = ups.filter((x) => x.value === 1).length;
       return h('tr', null,
         td([h('strong', null, e.name), ' ', chip(e.type, 'mute')]),
         td(e.listen, 'mono'),
         td(badge(upN + '/' + ups.length + ' up', ups.length && upN === ups.length ? 'ok' : 'bad')),
-        td(L.fmtNum(L.sum(sm, 's3qos_requests_total', w, 'rate')) + '/s', 'num'),
-        td(L.fmtBytesPerSec(L.sum(sm, 's3qos_endpoint_bytes_total', { endpoint: e.name, direction: 'in' }, 'rate')), 'num'),
-        td(L.fmtBytesPerSec(L.sum(sm, 's3qos_endpoint_bytes_total', { endpoint: e.name, direction: 'out' }, 'rate')), 'num'));
+        td(L.fmtNum(L.sum(sm, 's3flow_requests_total', w, 'rate')) + '/s', 'num'),
+        td(L.fmtBytesPerSec(L.sum(sm, 's3flow_endpoint_bytes_total', { endpoint: e.name, direction: 'in' }, 'rate')), 'num'),
+        td(L.fmtBytesPerSec(L.sum(sm, 's3flow_endpoint_bytes_total', { endpoint: e.name, direction: 'out' }, 'rate')), 'num'));
     });
     return h('div', { class: 'card' }, h('h3', null, 'Endpoints'),
       table(['Endpoint', 'Listen', 'Backends', { text: 'Requests', num: 1 }, { text: 'In', num: 1 }, { text: 'Out', num: 1 }], rows, 'No endpoints.'));
@@ -241,9 +241,9 @@
       for (const o of ops.filter((x) => x.read === grp)) {
         const w = { op: o.op };
         rows.push(h('tr', null, td(o.op, 'opcell mono'),
-          td(L.fmtNum(L.sum(sm, 's3qos_requests_total', w)), 'num'),
-          td(L.fmtNum(L.sum(sm, 's3qos_requests_total', w, 'rate')) + '/s', 'num'),
-          td(L.fmtNum(L.sum(sm, 's3qos_requests_total', { op: o.op, code: '503' })), 'num')));
+          td(L.fmtNum(L.sum(sm, 's3flow_requests_total', w)), 'num'),
+          td(L.fmtNum(L.sum(sm, 's3flow_requests_total', w, 'rate')) + '/s', 'num'),
+          td(L.fmtNum(L.sum(sm, 's3flow_requests_total', { op: o.op, code: '503' })), 'num')));
       }
     }
     return h('div', { class: 'card' }, h('h3', null, 'Operations', h('span', { class: 'sub' }, 'classified from method, path and query')),
@@ -252,7 +252,7 @@
 
   function throttleCard() {
     const sm = S.samples;
-    const rows = sm.filter((x) => x.name === 's3qos_policy_throttled_total' && x.value > 0)
+    const rows = sm.filter((x) => x.name === 's3flow_policy_throttled_total' && x.value > 0)
       .sort((a, b) => b.value - a.value).slice(0, 12).map((x) =>
         h('tr', null, td(x.labels.policy), td(x.labels.limit || '-', 'mono'), td(x.labels.reason), td(L.fmtNum(x.value), 'num'), td(L.fmtNum(x.rate) + '/s', 'num')));
     return h('div', { class: 'card' }, h('h3', null, 'Throttling by policy and limit', h('span', { class: 'sub' }, 'which limit is firing')),
@@ -269,16 +269,16 @@
     const sm = S.samples;
     const rows = S.policies.slice().sort((a, b) => a.name.localeCompare(b.name)).map((p) => {
       const w = { policy: p.name };
-      const active = L.sum(sm, 's3qos_policy_active_requests', w);
-      const thr = L.sum(sm, 's3qos_policy_throttled_total', w);
+      const active = L.sum(sm, 's3flow_policy_active_requests', w);
+      const thr = L.sum(sm, 's3flow_policy_throttled_total', w);
       return h('tr', null,
         td([h('strong', null, p.name), p.description ? h('div', { class: 'hint' }, p.description) : null]),
         td(h('div', { class: 'chips' }, (p.matchers || []).length ? (p.matchers || []).map((m) => chip(L.matcherSummary(m), m.inverse ? 'neg' : '')) : chip('matches nothing', 'mute'))),
         td(limitChips(p)),
-        td(L.fmtNum(L.sum(sm, 's3qos_policy_requests_total', w)), 'num'),
+        td(L.fmtNum(L.sum(sm, 's3flow_policy_requests_total', w)), 'num'),
         td(thr > 0 ? badge(L.fmtNum(thr), 'bad') : '0', 'num'),
         td(String(active), 'num'),
-        td(L.fmtBytes(L.sum(sm, 's3qos_policy_bytes_total', { policy: p.name, direction: 'in' })) + ' / ' + L.fmtBytes(L.sum(sm, 's3qos_policy_bytes_total', { policy: p.name, direction: 'out' })), 'num'),
+        td(L.fmtBytes(L.sum(sm, 's3flow_policy_bytes_total', { policy: p.name, direction: 'in' })) + ' / ' + L.fmtBytes(L.sum(sm, 's3flow_policy_bytes_total', { policy: p.name, direction: 'out' })), 'num'),
         td(h('div', { class: 'actions' },
           h('button', { class: 'btn small', onclick: () => policyEditor(p) }, 'Edit'),
           h('button', { class: 'btn small', onclick: () => policyEditor(Object.assign({}, p, { id: '', name: p.name + '-copy' })) }, 'Clone'),
@@ -460,7 +460,7 @@
         e.healthPath ? badge('probe ' + e.healthPath, 'ok') : badge('passive health only', 'warn')]),
       td([e.tls ? badge('TLS', 'ok') : badge('plain HTTP', 'warn'), ' ', e.backendInsecureSkipVerify ? badge('backend cert unchecked', 'bad') : null])));
     const peers = (cl.peers || []).map((p) => h('tr', null, td(p.url, 'mono'), td(badge(p.alive ? 'alive' : 'unreachable', p.alive ? 'ok' : 'bad')), td(L.ago(p.lastSeen))));
-    const fleet = L.sum(S.samples, 's3qos_fleet_share_divisor');
+    const fleet = L.sum(S.samples, 's3flow_fleet_share_divisor');
     return h('div', null,
       h('div', { class: 'pagehead' }, h('h2', null, 'Configuration')),
       h('div', { class: 'grid two' },
@@ -541,7 +541,7 @@
       await refresh(); startPolling();
     };
     return h('div', { class: 'login' }, h('form', { class: 'card', onsubmit: go },
-      h('h1', null, 's3qos'), h('p', null, 'Sign in with the admin token configured for this node.'), err,
+      h('h1', null, 'S3Flow'), h('p', { class: 'tagline' }, 'Policy-driven S3 traffic control for IBM object storage'), h('p', null, 'Sign in with the admin token configured for this node.'), err,
       h('label', { class: 'field' }, h('span', null, 'Admin token'), tok),
       h('button', { class: 'btn primary', type: 'submit' }, 'Sign in')));
   }
@@ -549,7 +549,7 @@
   function shell(content) {
     const ok = !S.error;
     return h('div', null,
-      h('div', { class: 'topbar' }, h('div', { class: 'brand' }, 's3qos', h('small', null, S.config ? S.config.nodeId : '')),
+      h('div', { class: 'topbar' }, h('div', { class: 'brand' }, 'S3Flow', h('small', null, S.config ? S.config.nodeId : '')),
         h('nav', { class: 'tabs' }, PAGES.map((p) => h('a', { class: 'tab' + (S.page === p[0] ? ' active' : ''), href: '#/' + p[0], 'aria-current': S.page === p[0] ? 'page' : null }, p[1]))),
         h('div', { class: 'spacer' }),
         h('div', { class: 'status' }, h('span', { class: 'dot' + (ok ? '' : ' bad') }), ok ? 'live, updated ' + new Date(S.lastOk).toLocaleTimeString() : 'disconnected'),

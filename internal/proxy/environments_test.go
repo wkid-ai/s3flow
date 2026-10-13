@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"s3qos/internal/classify"
-	"s3qos/internal/engine"
-	"s3qos/internal/metrics"
-	"s3qos/internal/policy"
-	"s3qos/internal/proxy"
-	"s3qos/internal/store"
+	"s3flow/internal/classify"
+	"s3flow/internal/engine"
+	"s3flow/internal/metrics"
+	"s3flow/internal/policy"
+	"s3flow/internal/proxy"
+	"s3flow/internal/store"
 )
 
 // Two environments (test and prod) served by one node on separate listeners,
@@ -76,10 +76,10 @@ func TestSeparateEnvironmentsAreIsolated(t *testing.T) {
 	var sb strings.Builder
 	reg.Write(&sb)
 	for _, want := range []string{
-		`s3qos_policy_requests_total{policy="test-tier"} 3`,
-		`s3qos_policy_requests_total{policy="prod-tier"} 50`,
-		`s3qos_requests_total{endpoint="s3test",type="ceph",class="read",op="get",code="503"} 1`,
-		`s3qos_requests_total{endpoint="s3prod",type="ceph",class="read",op="get",code="2xx"} 50`,
+		`s3flow_policy_requests_total{policy="test-tier"} 3`,
+		`s3flow_policy_requests_total{policy="prod-tier"} 50`,
+		`s3flow_requests_total{endpoint="s3test",type="ceph",class="read",op="get",code="503"} 1`,
+		`s3flow_requests_total{endpoint="s3prod",type="ceph",class="read",op="get",code="2xx"} 50`,
 	} {
 		if !strings.Contains(sb.String(), want) {
 			t.Errorf("metrics missing %q\n%s", want, sb.String())
