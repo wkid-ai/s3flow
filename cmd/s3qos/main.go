@@ -82,7 +82,8 @@ func main() {
 		log.Printf("endpoint %q (%s) listening on %s -> %v", e.Name, e.Type, e.Listen, e.Backends)
 	}
 
-	api := &admin.API{Store: st, Cluster: cl, Metrics: reg, Token: cfg.AdminToken}
+	api := &admin.API{Store: st, Cluster: cl, Metrics: reg, Token: cfg.AdminToken,
+		Config: cfg.Public(), Endpoints: cfg.EndpointNames()}
 	serve(&http.Server{Addr: cfg.AdminListen, Handler: api.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second}, cfg.AdminTLSCert, cfg.AdminTLSKey)
 	log.Printf("node %q admin API on %s", cfg.NodeID, cfg.AdminListen)
 

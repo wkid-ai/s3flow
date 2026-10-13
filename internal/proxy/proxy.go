@@ -103,7 +103,8 @@ func NewEndpoint(cfg EndpointConfig, cls *classify.Classifier, eng *engine.Engin
 		},
 		ModifyResponse: func(resp *http.Response) error {
 			if d, _ := resp.Request.Context().Value(decisionKey{}).(*engine.Decision); d != nil {
-				resp.Body = &shapedReader{rc: resp.Body, ctx: resp.Request.Context(), bw: d.Out, count: d.AddOut}
+				outBytes := e.reg.Counter("s3qos_endpoint_bytes_total", "endpoint", cfg.Name, "direction", "out")
+				resp.Body = &shapedReader{rc: resp.Body, ctx: resp.Request.Context(), bw: d.Out, count: func(n int) { d.AddOut(n); outBytes.Add(uint64(n)) }}
 			}
 			return nil
 		},
@@ -186,7 +187,8 @@ func (e *Endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx = context.WithValue(ctx, decisionKey{}, d)
 	r = r.WithContext(ctx)
 	if r.Body != nil && r.Body != http.NoBody {
-		r.Body = &shapedReader{rc: r.Body, ctx: ctx, bw: d.In, count: d.AddIn}
+		inBytes := e.reg.Counter("s3qos_endpoint_bytes_total", "endpoint", e.cfg.Name, "direction", "in")
+		r.Body = &shapedReader{rc: r.Body, ctx: ctx, bw: d.In, count: func(n int) { d.AddIn(n); inBytes.Add(uint64(n)) }}
 	}
 	e.rp.ServeHTTP(rec, r)
 }

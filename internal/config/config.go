@@ -136,3 +136,54 @@ func (c *Config) EndpointNames() []string {
 	}
 	return n
 }
+
+// PublicEndpoint is the non-secret view of an endpoint shown in the UI/API.
+type PublicEndpoint struct {
+	Name            string   `json:"name"`
+	Type            string   `json:"type"`
+	Listen          string   `json:"listen"`
+	Backends        []string `json:"backends"`
+	TLS             bool     `json:"tls"`
+	BackendCA       bool     `json:"backendCA"`
+	BackendInsecure bool     `json:"backendInsecureSkipVerify"`
+}
+
+// Public is the configuration view exposed by the management API. It never
+// contains tokens, key material or file paths of secrets.
+type Public struct {
+	NodeID         string           `json:"nodeId"`
+	AdminListen    string           `json:"adminListen"`
+	AdminTLS       bool             `json:"adminTls"`
+	Peers          []string         `json:"peers"`
+	SyncInterval   string           `json:"syncInterval"`
+	StatePath      string           `json:"statePath"`
+	BaseDomains    []string         `json:"baseDomains"`
+	TrustedProxies []string         `json:"trustedProxies"`
+	Endpoints      []PublicEndpoint `json:"endpoints"`
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
+// Public returns the sanitised configuration.
+func (c *Config) Public() Public {
+	p := Public{
+		NodeID: c.NodeID, AdminListen: c.AdminListen, AdminTLS: c.AdminTLSCert != "",
+		Peers: nonNil(c.Peers), SyncInterval: c.SyncInterval, StatePath: c.StatePath,
+		BaseDomains: nonNil(c.BaseDomains), TrustedProxies: nonNil(c.TrustedProxies),
+	}
+	if p.SyncInterval == "" {
+		p.SyncInterval = "2s"
+	}
+	for _, e := range c.Endpoints {
+		p.Endpoints = append(p.Endpoints, PublicEndpoint{
+			Name: e.Name, Type: e.Type, Listen: e.Listen, Backends: e.Backends,
+			TLS: e.TLSCert != "", BackendCA: e.BackendCA != "", BackendInsecure: e.InsecureTLS,
+		})
+	}
+	return p
+}

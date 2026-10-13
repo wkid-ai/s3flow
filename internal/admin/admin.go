@@ -14,6 +14,7 @@ import (
 	"s3qos/internal/metrics"
 	"s3qos/internal/policy"
 	"s3qos/internal/store"
+	"s3qos/internal/ui"
 )
 
 type API struct {
@@ -21,6 +22,9 @@ type API struct {
 	Cluster *cluster.Cluster
 	Metrics *metrics.Registry
 	Token   string // bearer token required for /api/*
+
+	Config    any      // sanitised configuration shown by /api/v1/config
+	Endpoints []string // endpoint names, offered by /api/v1/schema
 }
 
 func (a *API) Handler() http.Handler {
@@ -43,9 +47,21 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/cluster", a.auth(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, 200, map[string]any{
 			"node": a.Cluster.NodeID, "liveNodes": a.Cluster.LiveNodes(),
-			"peers": a.Cluster.Peers, "version": a.Store.Version(),
+			"peers": a.Cluster.PeerStatus(), "version": a.Store.Version(),
 		})
 	}))
+	mux.HandleFunc("/api/v1/config", a.auth(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, 200, map[string]any{"status": "success", "data": a.Config})
+	}))
+	mux.HandleFunc("/api/v1/schema", a.auth(a.schema))
+	mux.Handle("/ui/", ui.Handler())
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, "/ui/", http.StatusFound)
+			return
+		}
+		http.NotFound(w, r)
+	})
 	return mux
 }
 
@@ -246,4 +262,55 @@ func (a *API) tenant(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeErr(w, 405, "method not allowed")
 	}
+}
+
+// ---- schema ---------------------------------------------------------------
+
+type limitInfo struct {
+	Type      string `json:"type"`
+	Kind      string `json:"kind"`      // bandwidth | rate | concurrency
+	Scope     string `json:"scope"`     // group name or operation name
+	Operation string `json:"operation"` // empty for group/bandwidth limits
+}
+
+// schema tells the UI which limit types, matcher types and endpoints exist so
+// it never has to hard-code them.
+func (a *API) schema(w http.ResponseWriter, _ *http.Request) {
+	var limits []limitInfo
+	for _, t := range policy.LimitTypes {
+		li := limitInfo{Type: t}
+		switch {
+		case policy.IsRateLimit(t):
+			li.Kind = "rate"
+		case policy.IsConcLimit(t):
+			li.Kind = "concurrency"
+		default:
+			li.Kind = "bandwidth"
+		}
+		li.Scope = "bandwidth"
+		switch t {
+		case policy.ReadRate, policy.ConcRead:
+			li.Scope = "read"
+		case policy.WriteRate, policy.ConcWrite:
+			li.Scope = "write"
+		}
+		for _, s := range policy.OpSpecs {
+			if t == s.Rate || t == s.Conc {
+				li.Scope, li.Operation = "operation", string(s.Op)
+			}
+		}
+		limits = append(limits, li)
+	}
+	var ops []map[string]any
+	for _, s := range policy.OpSpecs {
+		ops = append(ops, map[string]any{"operation": s.Op, "read": s.Op.IsRead()})
+	}
+	writeJSON(w, 200, map[string]any{"status": "success", "data": map[string]any{
+		"limits":         limits,
+		"operations":     ops,
+		"matchers":       []string{policy.MatchBucket, policy.MatchBucketRegex, policy.MatchTenant, policy.MatchCIDR, policy.MatchEndpoint},
+		"bandwidthModes": []string{policy.ModeAggregate, policy.ModePerRequest},
+		"enforcement":    []string{"node", "fleet"},
+		"endpoints":      a.Endpoints,
+	}})
 }

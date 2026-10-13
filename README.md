@@ -30,8 +30,10 @@ that runs a backend performing real SigV4 verification behind the proxy.
 | Observability | Prometheus `/metrics` |
 | Multi-node | state replication + optional fleet-wide division (below) |
 
-Not provided: a GUI, and any *guarantee* of backend performance – these are
-ceilings, not reservations.
+| Web console | built in at `/ui/` on the admin listener (see below) |
+
+Not provided: any *guarantee* of backend performance – these are ceilings, not
+reservations.
 
 ## Read/write groups and per-operation limits
 
@@ -101,6 +103,36 @@ per backend system (Ceph / Scale / ICOS) and/or per client-facing VIP.
 upstream load balancers whose `X-Forwarded-For` is honoured for CIDR matching –
 leave empty if clients connect directly.
 
+## Web console
+
+Open `http://<node>:9090/ui/` (the admin listener; `/` redirects there) and sign
+in with the admin token. The console is embedded in the binary, has no external
+dependencies, and talks only to the authenticated API of the node serving it.
+
+| Page | What it shows / does |
+|---|---|
+| Dashboard | requests/s, throttled/s, upload and download rates, backend health, live proxy nodes; request and throughput charts (last 5 minutes); per-endpoint and per-operation tables; which policy and limit is rejecting requests |
+| Policies | list with matchers, limits, matched/throttled counts, active requests and bytes; create, edit, clone, delete. The editor offers bandwidth, read/write group and per-operation limits, with sizes such as `100 MB` or `1.5 GiB` |
+| Tenants | access key and bucket-ownership mapping; add, edit, delete |
+| Configuration | global settings (bandwidth mode, enforcement) with editing; this node's settings, endpoints and cluster peer health |
+| Metrics | every Prometheus series with its rate, filterable |
+
+Notes:
+
+* The page itself (`/ui/`) is public but contains no data; every API and
+  `/metrics` call needs the token. The token is kept in `sessionStorage` (cleared
+  when the tab closes or on sign-out), never in a cookie or `localStorage`.
+* The UI is served with a strict Content-Security-Policy (no inline script or
+  style, same-origin only) and builds its DOM without `innerHTML`.
+* Changes made in the console are validated by the server, persisted, and
+  replicated to peers exactly like API calls. Node-level settings (listeners,
+  backends, TLS, peers) come from the configuration file and are shown
+  read-only; secrets are never returned by `/api/v1/config`.
+* Charts are drawn from the node you are connected to; each node has its own
+  counters. Use Prometheus for fleet-wide history.
+* Serve the admin listener over TLS (`adminTlsCert`/`adminTlsKey`) or restrict it
+  to a trusted network, since the token travels in request headers.
+
 ## Management API
 
 All `/api/*` and `/metrics` calls need `Authorization: Bearer $S3QOS_ADMIN_TOKEN`.
@@ -127,6 +159,11 @@ curl -XDELETE -H "$A" $API/traffic-classes/<id>
 
 # global settings
 curl -XPUT -H "$A" $API/settings -d '{"bandwidthMode":"aggregate","enforcement":"node"}'
+
+# read-only helpers used by the console
+curl -H "$A" $API/config      # sanitised node configuration (no secrets)
+curl -H "$A" $API/schema      # limit types, operations, matcher types, endpoints
+curl -H "$A" $API/cluster     # live node count and peer health
 ```
 
 Changes are validated, persisted atomically to `statePath`, applied immediately
@@ -165,7 +202,7 @@ metrics, then add limits.
   (a subset of PCRE; no look-around/back-references).
 * Request-rate "started requests" are counted when headers arrive; bandwidth
   limits do not count requests rejected with 503.
-* Not implemented: GUI, historical charts (use Prometheus/Grafana on
+* Not implemented: long-term history (use Prometheus/Grafana on
   `s3qos_policy_*`), STS/IAM integration, mutual-TLS for the admin API
   (terminate it with `adminTlsCert/adminTlsKey` and a network ACL instead).
 
@@ -176,6 +213,7 @@ metrics, then add limits.
 `s3qos_policy_throttled_total{policy,reason=rate|concurrency,limit}`,
 `s3qos_policy_bytes_total{policy,direction=in|out}`,
 `s3qos_policy_active_requests{policy,limit}` (one series per concurrency limit in use),
+`s3qos_endpoint_bytes_total{endpoint,direction=in|out}`,
 `s3qos_backend_up{endpoint,backend}`, `s3qos_fleet_share_divisor`,
 `s3qos_request_seconds_sum_micro{endpoint,class}`.
 
@@ -191,6 +229,7 @@ internal/store       replicated state, persistence, tenant index
 internal/cluster     peer sync, liveness
 internal/proxy       streaming reverse proxy, backend pool, shaped bodies
 internal/admin       REST API + /metrics
+internal/ui          embedded web console (static HTML/CSS/JS)
 internal/config      node configuration
 ```
 

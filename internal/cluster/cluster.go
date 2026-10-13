@@ -59,6 +59,30 @@ func (c *Cluster) LiveNodes() int {
 	return n
 }
 
+// PeerStatus describes the last contact with one peer.
+type PeerStatus struct {
+	URL      string     `json:"url"`
+	Alive    bool       `json:"alive"`
+	LastSeen *time.Time `json:"lastSeen,omitempty"`
+}
+
+// PeerStatus reports liveness of every configured peer.
+func (c *Cluster) PeerStatus() []PeerStatus {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]PeerStatus, 0, len(c.Peers))
+	for _, p := range c.Peers {
+		ps := PeerStatus{URL: p}
+		if t, ok := c.seen[p]; ok {
+			t := t
+			ps.LastSeen = &t
+			ps.Alive = time.Since(t) <= 3*c.Interval
+		}
+		out = append(out, ps)
+	}
+	return out
+}
+
 // Run polls peers until ctx is cancelled.
 func (c *Cluster) Run(ctx context.Context) {
 	if len(c.Peers) == 0 {
