@@ -451,8 +451,11 @@
   function pageConfig() {
     const c = S.config || {}, st = S.settings || {}, cl = S.cluster || {};
     const eps = (c.endpoints || []).map((e) => h('tr', null,
-      td([h('strong', null, e.name), ' ', chip(e.type, 'mute')]), td(e.listen, 'mono'),
-      td(h('div', { class: 'chips' }, e.backends.map((b) => chip(b)))),
+      td([h('strong', null, e.name), ' ', chip(e.type, 'mute')]),
+      td(h('div', { class: 'chips' }, (e.listeners || []).map((a) => chip(a)))),
+      td(h('div', { class: 'chips' }, e.backends.map((b) => chip(b + ((e.weights && e.weights[b] > 1) ? '  ×' + e.weights[b] : ''))))),
+      td([chip(e.balance === 'leastconn' ? 'least connections' : 'round-robin', 'mute'), ' ',
+        e.healthPath ? badge('probe ' + e.healthPath, 'ok') : badge('passive health only', 'warn')]),
       td([e.tls ? badge('TLS', 'ok') : badge('plain HTTP', 'warn'), ' ', e.backendInsecureSkipVerify ? badge('backend cert unchecked', 'bad') : null])));
     const peers = (cl.peers || []).map((p) => h('tr', null, td(p.url, 'mono'), td(badge(p.alive ? 'alive' : 'unreachable', p.alive ? 'ok' : 'bad')), td(L.ago(p.lastSeen))));
     const fleet = L.sum(S.samples, 's3qos_fleet_share_divisor');
@@ -471,7 +474,7 @@
             h('dt', null, 'Sync interval'), h('dd', null, c.syncInterval), h('dt', null, 'Base domains'), h('dd', null, (c.baseDomains || []).join(', ') || 'none (path-style only)'),
             h('dt', null, 'Trusted proxies'), h('dd', null, (c.trustedProxies || []).join(', ') || 'none')),
           h('p', { class: 'hint' }, 'Node settings are read from the configuration file at start-up; restart the node to change them.'))),
-      h('div', { class: 'card' }, h('h3', null, 'Endpoints'), table(['Endpoint', 'Listen', 'Backends', 'Security'], eps, 'No endpoints.')),
+      h('div', { class: 'card' }, h('h3', null, 'Endpoints'), table(['Endpoint', 'Listen on', 'Backends (weight)', 'Balancing', 'Security'], eps, 'No endpoints.')),
       h('div', { class: 'card' }, h('h3', null, 'Cluster peers'), table(['Peer', 'State', 'Last contact'], peers, 'Standalone node: no peers configured.')));
   }
 

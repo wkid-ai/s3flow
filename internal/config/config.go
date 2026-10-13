@@ -12,14 +12,59 @@ import (
 )
 
 type Endpoint struct {
-	Name        string   `json:"name"`
-	Listen      string   `json:"listen"`
-	Type        string   `json:"type"` // ceph | scale | icos
-	Backends    []string `json:"backends"`
-	TLSCert     string   `json:"tlsCert,omitempty"`
-	TLSKey      string   `json:"tlsKey,omitempty"`
-	BackendCA   string   `json:"backendCA,omitempty"`
-	InsecureTLS bool     `json:"backendInsecureSkipVerify,omitempty"`
+	Name string `json:"name"`
+	// Listen is the primary bind address (host:port). Listeners adds more
+	// addresses, each served identically, so one endpoint can accept clients on
+	// several IPs and ports. At least one of the two is required.
+	Listen    string   `json:"listen"`
+	Listeners []string `json:"listeners,omitempty"`
+	Type      string   `json:"type"` // ceph | scale | icos
+	// Backends are the servers traffic is balanced across, each as
+	// scheme://host:port. Different IPs and ports are separate targets.
+	Backends []string `json:"backends"`
+	// BackendWeights gives a backend (exactly as written in Backends) a relative
+	// share of traffic; unlisted backends have weight 1.
+	BackendWeights map[string]int `json:"backendWeights,omitempty"`
+	Balance        string         `json:"balance,omitempty"`        // roundrobin (default) | leastconn
+	DownFor        string         `json:"backendDownFor,omitempty"` // duration, default 5s
+	HealthPath     string         `json:"healthPath,omitempty"`     // enables active probes, e.g. "/"
+	HealthInterval string         `json:"healthInterval,omitempty"` // default 5s
+	HealthTimeout  string         `json:"healthTimeout,omitempty"`  // default 2s
+	TLSCert        string         `json:"tlsCert,omitempty"`
+	TLSKey         string         `json:"tlsKey,omitempty"`
+	BackendCA      string         `json:"backendCA,omitempty"`
+	InsecureTLS    bool           `json:"backendInsecureSkipVerify,omitempty"`
+}
+
+// Addrs returns every address this endpoint binds, primary first.
+func (e Endpoint) Addrs() []string {
+	var out []string
+	if e.Listen != "" {
+		out = append(out, e.Listen)
+	}
+	return append(out, e.Listeners...)
+}
+
+// Durations parses the optional duration fields (zero means "use default").
+func (e Endpoint) Durations() (down, interval, timeout time.Duration, err error) {
+	parse := func(name, s string) (time.Duration, error) {
+		if s == "" {
+			return 0, nil
+		}
+		d, err := time.ParseDuration(s)
+		if err != nil || d <= 0 {
+			return 0, fmt.Errorf("endpoint %q: bad %s %q", e.Name, name, s)
+		}
+		return d, nil
+	}
+	if down, err = parse("backendDownFor", e.DownFor); err != nil {
+		return
+	}
+	if interval, err = parse("healthInterval", e.HealthInterval); err != nil {
+		return
+	}
+	timeout, err = parse("healthTimeout", e.HealthTimeout)
+	return
 }
 
 type Config struct {
@@ -80,19 +125,31 @@ func (c *Config) Normalize() error {
 	names, listens := map[string]bool{}, map[string]bool{c.AdminListen: true}
 	for i := range c.Endpoints {
 		e := &c.Endpoints[i]
-		if e.Name == "" || e.Listen == "" || len(e.Backends) == 0 {
-			return fmt.Errorf("endpoint %d: name, listen and backends are required", i)
+		if e.Name == "" || len(e.Addrs()) == 0 || len(e.Backends) == 0 {
+			return fmt.Errorf("endpoint %d: name, listen (or listeners) and backends are required", i)
 		}
 		if names[e.Name] {
 			return fmt.Errorf("duplicate endpoint name %q", e.Name)
 		}
-		if listens[e.Listen] {
-			return fmt.Errorf("listen address %q used more than once", e.Listen)
+		for _, a := range e.Addrs() {
+			if _, _, err := net.SplitHostPort(a); err != nil {
+				return fmt.Errorf("endpoint %q: bad listen address %q (want host:port)", e.Name, a)
+			}
+			if listens[a] {
+				return fmt.Errorf("listen address %q used more than once", a)
+			}
+			listens[a] = true
 		}
 		if (e.TLSCert == "") != (e.TLSKey == "") {
 			return fmt.Errorf("endpoint %q: tlsCert and tlsKey must be set together", e.Name)
 		}
-		names[e.Name], listens[e.Listen] = true, true
+		if _, _, _, err := e.Durations(); err != nil {
+			return err
+		}
+		if e.HealthPath != "" && !strings.HasPrefix(e.HealthPath, "/") {
+			return fmt.Errorf("endpoint %q: healthPath must start with /", e.Name)
+		}
+		names[e.Name] = true
 	}
 	if _, err := c.Interval(); err != nil {
 		return err
@@ -139,13 +196,17 @@ func (c *Config) EndpointNames() []string {
 
 // PublicEndpoint is the non-secret view of an endpoint shown in the UI/API.
 type PublicEndpoint struct {
-	Name            string   `json:"name"`
-	Type            string   `json:"type"`
-	Listen          string   `json:"listen"`
-	Backends        []string `json:"backends"`
-	TLS             bool     `json:"tls"`
-	BackendCA       bool     `json:"backendCA"`
-	BackendInsecure bool     `json:"backendInsecureSkipVerify"`
+	Name            string         `json:"name"`
+	Type            string         `json:"type"`
+	Listen          string         `json:"listen"` // all bind addresses, comma separated
+	Listeners       []string       `json:"listeners"`
+	Backends        []string       `json:"backends"`
+	Weights         map[string]int `json:"weights"`
+	Balance         string         `json:"balance"`
+	HealthPath      string         `json:"healthPath"`
+	TLS             bool           `json:"tls"`
+	BackendCA       bool           `json:"backendCA"`
+	BackendInsecure bool           `json:"backendInsecureSkipVerify"`
 }
 
 // Public is the configuration view exposed by the management API. It never
@@ -180,8 +241,20 @@ func (c *Config) Public() Public {
 		p.SyncInterval = "2s"
 	}
 	for _, e := range c.Endpoints {
+		bal := e.Balance
+		if bal == "" {
+			bal = "roundrobin"
+		}
+		w := map[string]int{}
+		for _, b := range e.Backends {
+			w[b] = 1
+			if v, ok := e.BackendWeights[b]; ok {
+				w[b] = v
+			}
+		}
 		p.Endpoints = append(p.Endpoints, PublicEndpoint{
-			Name: e.Name, Type: e.Type, Listen: e.Listen, Backends: e.Backends,
+			Name: e.Name, Type: e.Type, Listen: strings.Join(e.Addrs(), ", "), Listeners: e.Addrs(),
+			Backends: e.Backends, Weights: w, Balance: bal, HealthPath: e.HealthPath,
 			TLS: e.TLSCert != "", BackendCA: e.BackendCA != "", BackendInsecure: e.InsecureTLS,
 		})
 	}

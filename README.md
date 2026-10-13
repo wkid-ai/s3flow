@@ -93,10 +93,39 @@ export S3QOS_CLUSTER_TOKEN=$(openssl rand -hex 24)
 ./bin/s3qos -config config.example.json
 ```
 
-Each `endpoint` is a listener (own port, optional TLS) with a list of backends
-(round-robin with passive health: a backend that fails to connect is skipped for
-5 s). Endpoint names are what the `endpoint` matcher refers to. Use one endpoint
-per backend system (Ceph / Scale / ICOS) and/or per client-facing VIP.
+Endpoint names are what the `endpoint` matcher refers to. Use one endpoint per
+backend system (Ceph / Scale / ICOS) and/or per client-facing VIP.
+
+### Load balancing across IP addresses and ports
+
+An `endpoint` accepts clients on one or more addresses and spreads requests over
+a pool of backends. Every listener of an endpoint shares the same policies and
+the same backend pool.
+
+| Field | Meaning |
+|---|---|
+| `listen`, `listeners` | Bind addresses as `host:port`. `listen` is the primary; `listeners` adds more, so one endpoint can serve several IPs and ports (for example `10.1.0.10:443`, `10.1.0.11:443`, `10.1.0.10:8443`). At least one is required; an address may be used only once across all endpoints and the admin listener. TLS settings apply to all of them |
+| `backends` | Targets as `scheme://host:port`. The same IP on different ports counts as separate targets. Duplicates are rejected |
+| `backendWeights` | Relative share per backend, keyed by the exact string in `backends`; default 1 |
+| `balance` | `roundrobin` (default, smooth weighted: a 3:1 weighting alternates A A B A rather than bursting) or `leastconn` (fewest in-flight requests per unit of weight; better with long uploads and downloads) |
+| `healthPath` | Enables active probes: each backend gets `GET <healthPath>` every `healthInterval` (default 5s, timeout `healthTimeout` default 2s). Any answer below 500 means up. A failing backend is removed and returns as soon as a probe succeeds |
+| `backendDownFor` | Passive health: a backend that refuses or drops a connection is skipped for this long (default 5s), whether or not probes are enabled |
+
+If every backend is marked down, requests are still attempted rather than
+failing immediately. Probes carry no credentials, so use a path the backend
+answers without authentication; a 403 from S3 on `/` still counts as up.
+Load is balanced per request, not per client, and the original `Host` and signed
+headers are never changed, so backend signature checks still pass.
+A request already in flight is not retried on another backend, because its body
+may be partly consumed; the client retries after the 502.
+
+Per-backend metrics: `s3qos_backend_up`, `s3qos_backend_weight`,
+`s3qos_backend_active_requests` and `s3qos_backend_requests_total`, each labelled
+`{endpoint,backend}`.
+
+This balances traffic inside one s3qos node. To spread clients across several
+s3qos nodes use DNS round-robin or a VIP in front of them; the nodes share
+policy and divide fleet-wide limits (see `enforcement`).
 
 `baseDomains` enables virtual-hosted-style bucket extraction
 (`bucket.s3.example.com`); path-style always works. `trustedProxies` lists

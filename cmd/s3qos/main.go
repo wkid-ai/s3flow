@@ -56,7 +56,11 @@ func main() {
 	go cl.Run(ctx)
 
 	var servers []*http.Server
-	errc := make(chan error, len(cfg.Endpoints)+1)
+	nListeners := 1
+	for _, e := range cfg.Endpoints {
+		nListeners += len(e.Addrs())
+	}
+	errc := make(chan error, nListeners)
 	serve := func(s *http.Server, cert, key string) {
 		servers = append(servers, s)
 		go func() {
@@ -71,15 +75,23 @@ func main() {
 	}
 
 	for _, e := range cfg.Endpoints {
+		down, hint, hto, _ := e.Durations()
 		ep, err := proxy.NewEndpoint(proxy.EndpointConfig{
-			Name: e.Name, Type: e.Type, Backends: e.Backends, CAFile: e.BackendCA, InsecureTLS: e.InsecureTLS,
+			Name: e.Name, Type: e.Type, Backends: e.Backends, Weights: e.BackendWeights, Balance: e.Balance,
+			CAFile: e.BackendCA, InsecureTLS: e.InsecureTLS, DownFor: down,
+			HealthPath: e.HealthPath, HealthInterval: hint, HealthTimeout: hto,
 		}, cls, eng, reg)
 		if err != nil {
 			log.Fatalf("endpoint: %v", err)
 		}
+		go ep.Run(ctx)
+		// One server per bind address, all sharing the same handler, so the
+		// endpoint's policies and backend pool apply to every IP and port.
 		// No Read/WriteTimeout: they would cut off large streaming transfers.
-		serve(&http.Server{Addr: e.Listen, Handler: ep, ReadHeaderTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second}, e.TLSCert, e.TLSKey)
-		log.Printf("endpoint %q (%s) listening on %s -> %v", e.Name, e.Type, e.Listen, e.Backends)
+		for _, addr := range e.Addrs() {
+			serve(&http.Server{Addr: addr, Handler: ep, ReadHeaderTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second}, e.TLSCert, e.TLSKey)
+		}
+		log.Printf("endpoint %q (%s) listening on %v -> %v", e.Name, e.Type, e.Addrs(), e.Backends)
 	}
 
 	api := &admin.API{Store: st, Cluster: cl, Metrics: reg, Token: cfg.AdminToken,

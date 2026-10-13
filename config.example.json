@@ -12,10 +12,21 @@
     {
       "name": "ceph",
       "type": "ceph",
-      "listen": ":8443",
+      "listen": "10.1.0.10:443",
+      "listeners": ["10.1.0.11:443", "10.1.0.10:8443"],
       "tlsCert": "/etc/s3qos/tls.crt",
       "tlsKey": "/etc/s3qos/tls.key",
-      "backends": ["https://rgw1.example.com:443", "https://rgw2.example.com:443"],
+      "backends": [
+        "https://10.2.0.21:443",
+        "https://10.2.0.22:443",
+        "https://10.2.0.22:8443"
+      ],
+      "backendWeights": { "https://10.2.0.21:443": 2 },
+      "balance": "leastconn",
+      "healthPath": "/",
+      "healthInterval": "5s",
+      "healthTimeout": "2s",
+      "backendDownFor": "5s",
       "backendCA": "/etc/s3qos/backend-ca.pem"
     },
     {
@@ -34,6 +45,7 @@
       "tlsCert": "/etc/s3qos/tls.crt",
       "tlsKey": "/etc/s3qos/tls.key",
       "backends": ["https://accesser1.example.com:443", "https://accesser2.example.com:443"],
+      "healthPath": "/",
       "backendCA": "/etc/s3qos/backend-ca.pem"
     }
   ]
