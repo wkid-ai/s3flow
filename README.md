@@ -112,6 +112,13 @@ policies, so the common service levels exist from day one:
   specific matching policy wins, while request-rate and concurrency limits of
   every matching policy all apply.
 
+The screenshot below shows four policies in the console — Bronze attached to
+the `ceph` endpoint, Gold and Silver attached to specific tenants, and a
+`backup-burst` bucket policy — with live matched-request counts and byte
+throughput after a few minutes of mixed load:
+
+![Policies page showing Gold, Silver, Bronze and backup-burst with live counters](docs/screenshots/policies.png)
+
 ## Build / run
 
 ```sh
@@ -205,6 +212,8 @@ dependencies, and talks only to the authenticated API of the node serving it.
 | Tenants | access key and bucket-ownership mapping; add, edit, delete |
 | Configuration | global settings (bandwidth mode, enforcement) with editing; this node's settings, endpoints and cluster peer health |
 | Metrics | every Prometheus series with its rate, filterable |
+
+![Metrics page — per-policy and per-backend byte rates with live rates](docs/screenshots/metrics.png)
 
 Notes:
 
