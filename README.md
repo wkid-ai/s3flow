@@ -127,6 +127,38 @@ This balances traffic inside one s3qos node. To spread clients across several
 s3qos nodes use DNS round-robin or a VIP in front of them; the nodes share
 policy and divide fleet-wide limits (see `enforcement`).
 
+### Separate environments (for example test and prod)
+
+Give each environment its own endpoint: its own listen address, backend pool,
+TLS certificate and name. DNS points `s3test.s3.com` at the test address and
+`s3prod.s3.com` at the prod address. A complete example is in
+[`config.environments.example.json`](config.environments.example.json).
+
+```json
+{ "name": "s3test", "listen": "10.10.0.5:443", "backends": ["https://10.10.1.21:443", "https://10.10.1.22:443"], ... },
+{ "name": "s3prod", "listen": "10.20.0.5:443", "backends": ["https://10.20.1.21:443", "https://10.20.1.22:443", "https://10.20.1.23:443"], ... }
+```
+
+Attach policies with an `endpoint` matcher, optionally combined with `cidr`
+(client subnet), `tenant` or `bucket` matchers in other policies:
+
+```sh
+curl -XPOST -H "$A" $API/traffic-classes -d '{"name":"test-cap",
+  "matchers":[{"type":"endpoint","members":["s3test"]}],
+  "limits":[{"type":"readRequestRate","value":500},{"type":"writeRequestRate","value":200}]}'
+curl -XPOST -H "$A" $API/traffic-classes -d '{"name":"prod-gold",
+  "matchers":[{"type":"endpoint","members":["s3prod"]}],
+  "limits":[{"type":"readRequestRate","value":12500},{"type":"writeRequestRate","value":12500}]}'
+```
+
+Requests are matched to an endpoint by the address they arrive on, so the two
+environments must use different IPs or ports; the proxy does not distinguish
+two hostnames that share one listener. Limits, counters and metrics are kept
+per policy and per endpoint, so a limit on one environment never affects the
+other, and traffic never crosses between their backend pools. Do not list the
+environment hostnames in `baseDomains` unless `bucket.<hostname>` really is a
+bucket.
+
 `baseDomains` enables virtual-hosted-style bucket extraction
 (`bucket.s3.example.com`); path-style always works. `trustedProxies` lists
 upstream load balancers whose `X-Forwarded-For` is honoured for CIDR matching –

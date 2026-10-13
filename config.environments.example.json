@@ -1,0 +1,32 @@
+{
+  "nodeId": "s3qos-1",
+  "adminListen": "127.0.0.1:9090",
+  "adminTokenEnv": "S3QOS_ADMIN_TOKEN",
+  "clusterTokenEnv": "S3QOS_CLUSTER_TOKEN",
+  "statePath": "/var/lib/s3qos/state.json",
+  "baseDomains": [],
+  "endpoints": [
+    {
+      "name": "s3test",
+      "type": "ceph",
+      "listen": "10.10.0.5:443",
+      "tlsCert": "/etc/s3qos/s3test.crt",
+      "tlsKey": "/etc/s3qos/s3test.key",
+      "backends": ["https://10.10.1.21:443", "https://10.10.1.22:443"],
+      "healthPath": "/",
+      "backendCA": "/etc/s3qos/test-ca.pem"
+    },
+    {
+      "name": "s3prod",
+      "type": "ceph",
+      "listen": "10.20.0.5:443",
+      "listeners": ["10.20.0.6:443"],
+      "tlsCert": "/etc/s3qos/s3prod.crt",
+      "tlsKey": "/etc/s3qos/s3prod.key",
+      "backends": ["https://10.20.1.21:443", "https://10.20.1.22:443", "https://10.20.1.23:443"],
+      "balance": "leastconn",
+      "healthPath": "/",
+      "backendCA": "/etc/s3qos/prod-ca.pem"
+    }
+  ]
+}
