@@ -9,6 +9,55 @@ import (
 	"strings"
 )
 
+// The Gold, Silver and Bronze tier IDs are well-known so nodes can identify
+// and update them without creating duplicates after a restart or a re-seed.
+const (
+	IDGold   = "tier-gold-000000"
+	IDSilver = "tier-silver-000000"
+	IDBronze = "tier-bronze-000000"
+)
+
+// DefaultTiers returns the three built-in SLA tiers. They carry no matchers
+// so they match nothing until an operator attaches an endpoint/tenant/CIDR
+// matcher via the API or the web console.
+func DefaultTiers() []Policy {
+	return []Policy{
+		{
+			ID:          IDGold,
+			Name:        "Gold",
+			Description: "50 K req/s, 10 GB/s — attach via endpoint, tenant or CIDR matcher",
+			Limits: []Limit{
+				{Type: AggIn, Value: 10_000_000_000},
+				{Type: AggOut, Value: 10_000_000_000},
+				{Type: ReadRate, Value: 50_000},
+				{Type: WriteRate, Value: 50_000},
+			},
+		},
+		{
+			ID:          IDSilver,
+			Name:        "Silver",
+			Description: "20 K req/s, 5 GB/s — attach via endpoint, tenant or CIDR matcher",
+			Limits: []Limit{
+				{Type: AggIn, Value: 5_000_000_000},
+				{Type: AggOut, Value: 5_000_000_000},
+				{Type: ReadRate, Value: 20_000},
+				{Type: WriteRate, Value: 20_000},
+			},
+		},
+		{
+			ID:          IDBronze,
+			Name:        "Bronze",
+			Description: "10 K req/s, 1.25 GB/s — attach via endpoint, tenant or CIDR matcher",
+			Limits: []Limit{
+				{Type: AggIn, Value: 1_250_000_000},
+				{Type: AggOut, Value: 1_250_000_000},
+				{Type: ReadRate, Value: 10_000},
+				{Type: WriteRate, Value: 10_000},
+			},
+		},
+	}
+}
+
 // Limit type names (as used in the management API JSON).
 const (
 	AggIn     = "aggregateBandwidthIn"

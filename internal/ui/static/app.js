@@ -261,7 +261,7 @@
 
   /* --- policies --- */
   function limitChips(p) {
-    if (!p.limits.length) return chip('no limits (monitor only)', 'mute');
+    if (!(p.limits || []).length) return chip('no limits (monitor only)', 'mute');
     return h('div', { class: 'chips' }, p.limits.map((l) => chip(L.limitName(l.type) + ' ' + L.formatLimit(l))));
   }
 
@@ -273,7 +273,7 @@
       const thr = L.sum(sm, 's3qos_policy_throttled_total', w);
       return h('tr', null,
         td([h('strong', null, p.name), p.description ? h('div', { class: 'hint' }, p.description) : null]),
-        td(h('div', { class: 'chips' }, p.matchers.length ? p.matchers.map((m) => chip(L.matcherSummary(m), m.inverse ? 'neg' : '')) : chip('matches nothing', 'mute'))),
+        td(h('div', { class: 'chips' }, (p.matchers || []).length ? (p.matchers || []).map((m) => chip(L.matcherSummary(m), m.inverse ? 'neg' : '')) : chip('matches nothing', 'mute'))),
         td(limitChips(p)),
         td(L.fmtNum(L.sum(sm, 's3qos_policy_requests_total', w)), 'num'),
         td(thr > 0 ? badge(L.fmtNum(thr), 'bad') : '0', 'num'),
@@ -329,12 +329,12 @@
       const rec = { type, members, inv };
       matcherRows.push(rec); matcherBox.appendChild(box);
     }
-    orig.matchers.forEach(addMatcher);
-    if (!orig.matchers.length) addMatcher();
+    (orig.matchers || []).forEach(addMatcher);
+    if (!(orig.matchers || []).length) addMatcher();
 
     /* limits */
     const fields = {};   // type -> input
-    const cur = {}; orig.limits.forEach((l) => { cur[l.type] = l.value; });
+    const cur = {}; (orig.limits || []).forEach((l) => { cur[l.type] = l.value; });
     const info = {}; S.schema.limits.forEach((l) => { info[l.type] = l; });
     function limitInput(type) {
       const bw = L.isBandwidth(type);
@@ -380,7 +380,9 @@
         if (!(v > 0)) { errs.push(t + ': "' + raw + '" is not a valid ' + (L.isBandwidth(t) ? 'size such as 100 MB' : 'positive whole number') + '.'); fields[t].classList.add('invalid'); continue; }
         limits.push({ type: t, value: v });
       }
-      const matchers = matcherRows.map((r) => ({ type: r.type.value, members: L.splitList(r.members.value.replace(/\n/g, ',')), inverse: r.inv.checked }));
+      // Blank matcher rows are ignored, so a policy (such as a default tier) can be saved before it is attached.
+      const matchers = matcherRows.map((r) => ({ type: r.type.value, members: L.splitList(r.members.value.replace(/\n/g, ',')), inverse: r.inv.checked }))
+        .filter((m) => m.members.length > 0);
       const p = { name: name.value.trim(), description: desc.value.trim(), matchers: matchers, limits: limits };
       return { p: p, errs: errs.concat(L.validatePolicy(p, mode, S.schema.limits.map((l) => l.type))) };
     }

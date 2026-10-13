@@ -18,6 +18,7 @@ import (
 	"s3qos/internal/config"
 	"s3qos/internal/engine"
 	"s3qos/internal/metrics"
+	"s3qos/internal/policy"
 	"s3qos/internal/proxy"
 	"s3qos/internal/store"
 )
@@ -44,6 +45,11 @@ func main() {
 	st, err := store.Open(cfg.StatePath, eng.Validate)
 	if err != nil {
 		log.Fatalf("state: %v", err)
+	}
+	if seeded, err := st.SeedDefaults(policy.DefaultTiers()); err != nil {
+		log.Fatalf("default policies: %v", err)
+	} else if seeded {
+		log.Printf("created default Gold, Silver and Bronze policies (no matchers yet: attach them to an endpoint, tenant or subnet)")
 	}
 	cl = cluster.New(cfg.NodeID, cfg.Peers, cfg.ClusterToken, interval, st)
 	st.Subscribe(eng.Apply)

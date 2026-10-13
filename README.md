@@ -84,6 +84,34 @@ report the limit that fired in the `limit` label of
 Bandwidth limits are not per operation: they follow the direction of the data
 (upload = in, download = out) and use the best-match policy as before.
 
+## Default Gold, Silver and Bronze tiers
+
+The first time a node starts with an empty state it creates three ordinary
+policies, so the common service levels exist from day one:
+
+| Tier | Read requests/s | Write requests/s | Upload | Download |
+|---|---|---|---|---|
+| Gold | 50 000 | 50 000 | 10 GB/s (80 Gbps) | 10 GB/s |
+| Silver | 20 000 | 20 000 | 5 GB/s (40 Gbps) | 5 GB/s |
+| Bronze | 10 000 | 10 000 | 1.25 GB/s (10 Gbps) | 1.25 GB/s |
+
+* The request rate is applied to reads and to writes separately, so each tier
+  allows up to twice its figure in total if the load is evenly mixed. To hold a
+  tier to its figure as a combined total, halve both values in the console.
+* Bandwidth is shown in decimal gigabytes (1 GB/s = 1 000 000 000 bytes/s).
+* The tiers have **no matchers**, so they match nothing and change no traffic
+  until you attach them. Open **Policies**, edit a tier and add an `endpoint`,
+  `tenant`, `bucket` or `cidr` matcher (for example `tenant: acme`).
+* They are normal policies. Every limit can be changed in the console or API:
+  bandwidth, the read and write group rates and concurrency, and all
+  per-operation limits. You can rename, clone or delete them.
+* They are created once. After you delete or change them they are never
+  re-created, and a node that joins an existing cluster takes the cluster's
+  policies instead of adding its own.
+* A tenant can only follow one bandwidth tier at a time: for bandwidth the most
+  specific matching policy wins, while request-rate and concurrency limits of
+  every matching policy all apply.
+
 ## Build / run
 
 ```sh

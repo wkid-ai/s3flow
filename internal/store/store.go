@@ -30,6 +30,9 @@ type State struct {
 	Enforcement   string            `json:"enforcement"` // "node" (each proxy enforces the full limit) or "fleet"
 	Policies      []policy.Policy   `json:"policies"`
 	Tenants       map[string]Tenant `json:"tenants"`
+	// DefaultsSeeded records that the built-in policies were offered once, so
+	// deleting them is permanent.
+	DefaultsSeeded bool `json:"defaultsSeeded,omitempty"`
 }
 
 type index struct {
@@ -94,6 +97,15 @@ func clone(st State) State {
 	if out.Tenants == nil {
 		out.Tenants = map[string]Tenant{}
 	}
+	// Clients iterate these lists, so they must serialise as [] and never null.
+	for i := range out.Policies {
+		if out.Policies[i].Matchers == nil {
+			out.Policies[i].Matchers = []policy.Matcher{}
+		}
+		if out.Policies[i].Limits == nil {
+			out.Policies[i].Limits = []policy.Limit{}
+		}
+	}
 	return out
 }
 
@@ -108,6 +120,40 @@ func (s *Store) Version() int64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.st.Version
+}
+
+// SeedDefaults installs policies on a store that has never had any. It does
+// nothing if policies already exist or defaults were seeded before, so edits
+// and deletions are never undone. The seeded state keeps its version (0 on a
+// fresh store), which means any state held by a peer is newer and replaces it:
+// a node joining a running cluster cannot overwrite the cluster's policies.
+// Call it before Notify. It reports whether anything was installed.
+func (s *Store) SeedDefaults(defaults []policy.Policy) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.st.DefaultsSeeded {
+		return false, nil
+	}
+	if len(s.st.Policies) > 0 {
+		s.st.DefaultsSeeded = true // in memory; saved with the next change
+		return false, nil
+	}
+	next := clone(s.st)
+	next.Policies = append([]policy.Policy(nil), defaults...)
+	next.DefaultsSeeded = true
+	if err := check(next); err != nil {
+		return false, err
+	}
+	if s.validate != nil {
+		if err := s.validate(next); err != nil {
+			return false, err
+		}
+	}
+	if err := s.persist(next); err != nil {
+		return false, err
+	}
+	s.st = next
+	return true, nil
 }
 
 // Subscribe registers a callback invoked after every accepted change.
