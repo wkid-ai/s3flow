@@ -1,9 +1,9 @@
-/* S3Flow management console. Talks only to the authenticated /api/v1 endpoints
+/* s3flow management console. Talks only to the authenticated /api/v1 endpoints
  * and /metrics of the node serving it. DOM is built with createElement (never
  * innerHTML), so data from the API can never inject markup. */
 (function () {
   'use strict';
-  const L = window.S3FLOW;
+  const L = window.s3flow;
   const POLL_MS = 5000, HISTORY = 60;
   const TOKEN_KEY = 's3flow_token';
 
@@ -541,7 +541,7 @@
       await refresh(); startPolling();
     };
     return h('div', { class: 'login' }, h('form', { class: 'card', onsubmit: go },
-      h('h1', null, 'S3Flow'), h('p', { class: 'tagline' }, 'Policy-driven S3 traffic control for IBM object storage'), h('p', null, 'Sign in with the admin token configured for this node.'), err,
+      h('h1', null, 's3flow'), h('p', { class: 'tagline' }, 'Policy-driven S3 traffic control for IBM object storage'), h('p', null, 'Sign in with the admin token configured for this node.'), err,
       h('label', { class: 'field' }, h('span', null, 'Admin token'), tok),
       h('button', { class: 'btn primary', type: 'submit' }, 'Sign in')));
   }
@@ -549,7 +549,7 @@
   function shell(content) {
     const ok = !S.error;
     return h('div', null,
-      h('div', { class: 'topbar' }, h('div', { class: 'brand' }, 'S3Flow', h('small', null, S.config ? S.config.nodeId : '')),
+      h('div', { class: 'topbar' }, h('div', { class: 'brand' }, 's3flow', h('small', null, S.config ? S.config.nodeId : '')),
         h('nav', { class: 'tabs' }, PAGES.map((p) => h('a', { class: 'tab' + (S.page === p[0] ? ' active' : ''), href: '#/' + p[0], 'aria-current': S.page === p[0] ? 'page' : null }, p[1]))),
         h('div', { class: 'spacer' }),
         h('div', { class: 'status' }, h('span', { class: 'dot' + (ok ? '' : ' bad') }), ok ? 'live, updated ' + new Date(S.lastOk).toLocaleTimeString() : 'disconnected'),

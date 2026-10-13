@@ -1,8 +1,8 @@
-/* s3flow UI – pure helpers (no DOM). Loaded by the browser as window.S3FLOW and
+/* s3flow UI – pure helpers (no DOM). Loaded by the browser as window.s3flow and
  * by `node --test` as a CommonJS module. */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.S3FLOW = factory();
+  else root.s3flow = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 

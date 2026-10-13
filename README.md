@@ -1,8 +1,8 @@
-# S3Flow
+# s3flow
 
 **Policy-driven S3 traffic control for IBM object storage**
 
-S3Flow is a transparent S3 front-end proxy with QoS. A single static Go binary
+s3flow is a transparent S3 front-end proxy with QoS. A single static Go binary
 (standard library only), `s3flow`, sits in front of
 **IBM Storage Ceph (RGW)**, **Storage Scale CES S3** and **IBM Cloud Object
 Storage (ICOS)** and applies traffic-classification policies (bandwidth,
@@ -16,7 +16,7 @@ that runs a backend performing real SigV4 verification behind the proxy.
 
 ## Feature mapping
 
-| Capability | S3Flow |
+| Capability | s3flow |
 |---|---|
 | Matchers `bucket`, `bucket-regex`, `tenant`, `cidr` (IPv4), `endpoint`, `inverse` | same names/JSON; OR semantics; regex unanchored |
 | Best-match bandwidth precedence (/32 IP, bucket, regex, tenant, endpoint, CIDR, inverse) | implemented; bandwidth taken from the single winning policy only |
@@ -161,8 +161,8 @@ Per-backend metrics: `s3flow_backend_up`, `s3flow_backend_weight`,
 `s3flow_backend_active_requests` and `s3flow_backend_requests_total`, each labelled
 `{endpoint,backend}`.
 
-This balances traffic inside one S3Flow node. To spread clients across several
-S3Flow nodes use DNS round-robin or a VIP in front of them; the nodes share
+This balances traffic inside one s3flow node. To spread clients across several
+s3flow nodes use DNS round-robin or a VIP in front of them; the nodes share
 policy and divide fleet-wide limits (see `enforcement`).
 
 ### Separate environments (for example test and prod)
@@ -292,7 +292,7 @@ metrics, then add limits.
 
 ## Operational notes and limitations
 
-* Put an L4 load balancer or DNS round-robin in front of several S3Flow nodes;
+* Put an L4 load balancer or DNS round-robin in front of several s3flow nodes;
   clients must not bypass the proxy (restrict backend access by firewall).
 * TLS is terminated at the proxy and re-originated to the backend with the
   original `Host` header preserved (it is part of the SigV4 signature). The
